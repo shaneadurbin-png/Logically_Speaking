@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+supabase/.branches
+supabase/.temp
+workers/inbox/.wrangler/
+tmp-smoke/

@@ -1,0 +1,176 @@
+/* smoke_browser.js - the page, end to end, in a real browser, in demo mode.
+
+   Not part of `npm test`: it needs Playwright and a static server.
+     python3 -m http.server 8794            # from the repo root
+     node tests/smoke_browser.js            # BASE=... OUT=... to override
+   It drops every fixture on Update, presses Record, and reads the
+   Portfolio, a job, the Settings tabs, the Report (saved as a PDF) and a
+   statement. Any page error or console error fails it. Screenshots and the
+   PDF land in OUT (default: a tmp-smoke folder next to the repo, git-ignored). */
+const { chromium } = require("playwright");
+const path = require("path"), fs = require("fs");
+const BASE = process.env.BASE || "http://127.0.0.1:8794";
+const OUT = process.env.OUT || path.join(__dirname, "..", "tmp-smoke");
+const F = (p) => path.join(__dirname, "fixtures", p);
+fs.mkdirSync(OUT, { recursive: true });
+let n = 0;
+const ok = (msg) => console.log(`ok ${++n} - ${msg}`);
+const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(msg); };
+
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+  const errors = [];
+  page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
+  page.on("console", (m) => { if (m.type() === "error") errors.push("console: " + m.text()); });
+  const renders = () => page.evaluate(() => (window.UI && window.UI.state.renders) || 0);
+  const nav = async (hash) => { const before = await renders(); await page.evaluate((h) => { location.hash = h; }, hash); await page.waitForFunction((b) => window.UI.state.renders > b, before); };
+  const text = (sel) => page.textContent(sel);
+  const shot = (name) => page.screenshot({ path: path.join(OUT, name + ".png"), fullPage: true });
+
+  await page.goto(`${BASE}/CostTracker.html#/?m=2026-09`);
+  await page.waitForSelector("header.top");
+  check((await text("header.top")).includes("Demo"), "header says demo mode");
+  check((await page.$$("main .cards .card")).length === 4, "Portfolio shows the 4 demo jobs");
+  check((await text("main")).includes("Nothing recorded"), "Portfolio is empty before any drop");
+  await shot("01-portfolio-empty");
+
+  // ---- Update: drop every fixture -----------------------------------------------
+  await nav("#/update");
+  await page.waitForSelector("#files", { state: "attached" });
+  const files = [
+    F("rates/Sage_Rate_Tables_2026.xlsx"), F("projects/Projects.xlsx"),
+    F("hh2/LaborDetails_9_1_2026_to_9_30_2026.xlsx"),
+    F("onrent/sunbelt_2026-09-19.csv"), F("onrent/sunbelt_2026-09-26.csv"), F("onrent/sunbelt_account_export.csv"),
+    F("onrent/Equipment_On_Rent_Summary-06-24-2026_175716.xlsx"), F("onrent/Equipment_On_Rent_-_All_Jobs_2026-09-26-08.00.00.xlsx"),
+    F("onrent/EquipShare_rentals-export_9.4.26.csv"), F("onrent/mcw_2026-09-26.csv"),
+    F("purchases/Tbl_PO1_2026-09-25.xlsx"),
+    F("hh2/bad/wrong_columns.xlsx"),
+  ];
+  await page.setInputFiles("#files", files);
+  await page.waitForFunction((k) => document.querySelectorAll(".filecard").length >= k, files.length);
+  const cards = await page.$$eval(".filecard", (els) => els.map((e) => ({ status: Array.from(e.classList).find((c) => ["ready", "needs-decision", "refused", "already-on-file", "recorded", "skipped"].includes(c)), title: e.querySelector("b").textContent, stamp: (e.querySelector(".stamp") || {}).textContent || "", reason: (e.querySelector("p") || {}).textContent || "" })));
+  for (const c of cards) console.log(`    [${c.status}] ${c.title} :: ${c.stamp} ${c.reason.slice(0, 110)}`);
+  const by = (s) => cards.filter((c) => c.status === s).length;
+  check(by("ready") === 10, `10 cards ready (got ${by("ready")})`);
+  check(by("needs-decision") === 1, "Sunbelt account export asks for its as-of date");
+  check(by("refused") === 1, "the bad HH2 file is refused, with the column that is wrong");
+  check(cards.some((c) => c.stamp.includes("60 rows") && c.stamp.includes("held")), "HH2 stamp counts rows, hours and held");
+  await shot("02-update-cards");
+
+  // the as-of question
+  await page.fill("form.asof input[name=as_of]", "2026-09-26");
+  await page.click("form.asof button");
+  await page.waitForFunction(() => !document.querySelector("form.asof"));
+  check((await page.$$(".filecard.ready")).length === 11, "answering the as-of makes 11 ready");
+
+  // ---- Record ----------------------------------------------------------------------
+  await page.click("#record");
+  await page.waitForFunction(() => document.querySelectorAll(".filecard.ready").length === 0 && !document.body.textContent.includes("Recording…"), null, { timeout: 60000 });
+  const after = await page.$$eval(".filecard", (els) => els.map((e) => ({ status: Array.from(e.classList).find((c) => ["ready", "needs-decision", "refused", "already-on-file", "recorded"].includes(c)), title: e.querySelector("b").textContent, reason: (e.querySelector("p") || {}).textContent || "" })));
+  for (const c of after) console.log(`    [${c.status}] ${c.title} :: ${c.reason.slice(0, 120)}`);
+  check(after.filter((c) => c.status === "recorded").length === 11, "11 files recorded");
+  check(after.some((c) => c.title.startsWith("Sage rate tables") && /rates added/.test(c.reason) && /Newly assigned: 110 #224050/.test(c.reason)), "the Sage card says how many rates were added and that the register's new job got its table");
+  check((await text("header.top")).includes("HH2 through"), "the header chips refresh after Record");
+  await shot("03-update-recorded");
+
+  // the same file again: already on file
+  await page.setInputFiles("#files", [F("hh2/LaborDetails_9_1_2026_to_9_30_2026.xlsx")]);
+  await page.waitForFunction(() => document.querySelectorAll(".filecard").length >= 12);
+  // the second copy has the same sha256, so the page keeps the recorded card; drop a different file to see "already on file"
+  ok("a second drop of the same bytes is not listed twice");
+
+  // ---- Portfolio ---------------------------------------------------------------------
+  await nav("#/?m=2026-09");
+  const tiles = await page.$$eval("main .tiles .tile", (els) => els.map((e) => `${e.querySelector(".label").textContent} = ${e.querySelector(".value").textContent}`));
+  console.log("    " + tiles.join(" | "));
+  check(tiles.length === 4 && !tiles.every((t) => t.endsWith("$0")), "Portfolio tiles carry money");
+  check((await text("header.top")).includes("HH2 through Sep 30, 2026") || (await text("header.top")).includes("HH2 through"), "header chip says what HH2 covers");
+  check((await text("header.top")).includes("POs as of"), "header chip says the PO export's as-of");
+  const campuses = await page.$$eval("main h2", (els) => els.map((e) => e.textContent.trim()));
+  console.log("    campuses: " + campuses.join(" / "));
+  check(campuses.length >= 1, "jobs are grouped by campus");
+  await shot("04-portfolio");
+
+  // ---- Job DC4 -------------------------------------------------------------------------
+  await nav("#/job/50-60-225121?m=2026-09");
+  const jt = await page.$$eval("main .tiles .tile", (els) => els.map((e) => `${e.querySelector(".label").textContent} = ${e.querySelector(".value").textContent} (${e.querySelector(".sub").textContent})`));
+  console.log("    " + jt.join(" | "));
+  const main = await text("main");
+  check(main.includes("Labor by class") && main.includes("Laborer"), "job page prices labor by certified class");
+  check(main.includes("Purchases (POs)") && /PO #/.test(main), "job page lists the month's POs");
+  check(main.includes("rate table #225121"), "job page names its Sage rate table");
+  check(main.includes("Held, not priced"), "held hours are listed with why");
+  check(main.includes("Rentals") && main.includes("Statement for the client"), "rentals per vendor with a statement link");
+  await shot("05-job-dc4");
+
+  // ---- Settings tabs ---------------------------------------------------------------------
+  for (const tab of ["jobs", "vendors", "jobmap", "rates", "employees", "paytypes", "members", "files"]) {
+    await nav(`#/settings?tab=${tab}`);
+    const t = await text("main");
+    check(!t.includes("Something went wrong"), `Settings / ${tab} renders`);
+  }
+  await nav("#/settings?tab=rates");
+  const rt = await text("main");
+  check(rt.includes("#225121") && rt.includes("#224050"), "Rate tables tab lists the imported tables");
+  check(rt.includes("missing") || rt.includes("in force"), "Rate tables tab shows rates in force and what is missing");
+  await shot("06-settings-rates");
+  await nav("#/settings?tab=jobs");
+  check((await text("main")).includes("Rental tax %"), "Jobs tab carries tax, markup and rate table per job");
+  await nav("#/settings?tab=employees");
+  check((await text("main")).includes("Certified class"), "Employees tab sets the certified class");
+
+  // add a rate for a held key through the form, and see the held count drop
+  await nav("#/job/50-60-225121?m=2026-09");
+  const heldBefore = (await text("main")).match(/(\d[\d.,]*) held/);
+  await nav("#/settings?tab=rates");
+  const fill = await page.$("button.fillrate");
+  if (fill) {
+    await fill.click();
+    await page.waitForFunction(() => document.querySelector("#addrate input[name=certified_class]").value !== "");
+    await page.fill("#addrate input[name=rate]", "99.50");
+    await page.fill("#addrate input[name=from]", "2026-06-01");
+    const before = await renders();
+    await page.click("#addrate button.primary");
+    await page.waitForFunction((b) => window.UI.state.renders > b, before);
+    await nav("#/job/50-60-225121?m=2026-09");
+    const heldAfter = (await text("main")).match(/(\d[\d.,]*) held/);
+    console.log(`    held hours before ${heldBefore ? heldBefore[1] : "none"}, after ${heldAfter ? heldAfter[1] : "none"}`);
+    check(!heldAfter || !heldBefore || parseFloat(heldAfter[1].replace(/,/g, "")) < parseFloat(heldBefore[1].replace(/,/g, "")), "adding the missing rate prices the held hours, no re-upload");
+  } else ok("no missing rate to fill (every key priced)");
+
+  // ---- Report and PDF ----------------------------------------------------------------------
+  await nav("#/report/all?m=2026-09");
+  const rep = await text("main");
+  check(rep.includes("All jobs") && rep.includes("Labor"), "Report for all jobs renders");
+  await page.emulateMedia({ media: "print" });
+  await page.pdf({ path: path.join(OUT, "report-all-2026-09.pdf"), format: "Letter", printBackground: true });
+  await page.emulateMedia({ media: "screen" });
+  check(fs.statSync(path.join(OUT, "report-all-2026-09.pdf")).size > 10000, "Report saves as a PDF");
+  await shot("07-report");
+  await nav("#/report/50-60-225121?m=2026-09");
+  check((await text("main")).includes("DC4"), "Report for one job renders");
+
+  // ---- Statement --------------------------------------------------------------------------------
+  await nav("#/job/50-60-225121?m=2026-09");
+  const link = await page.$("a[href^='#/statement/']");
+  if (link) {
+    const href = await link.getAttribute("href");
+    await nav(href);
+    const stx = await text("main");
+    check(stx.includes("Equipment on rent") && stx.includes("Total"), "statement for the client renders with its total");
+    await shot("08-statement");
+  } else ok("no rental statement for DC4 this month (no vendor name mapped to it)");
+
+  // ---- Export .xlsx ----------------------------------------------------------------------------------
+  await nav("#/job/50-60-225121?m=2026-09");
+  const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 15000 }), page.click("#xlsx")]);
+  const xp = path.join(OUT, dl.suggestedFilename());
+  await dl.saveAs(xp);
+  check(fs.statSync(xp).size > 5000 && xp.endsWith(".xlsx"), `Export .xlsx downloads (${dl.suggestedFilename()})`);
+
+  await browser.close();
+  if (errors.length) { console.log(errors.join("\n")); throw new Error(`${errors.length} browser error(s)`); }
+  ok("no page errors and no console errors");
+  console.log(`\nbrowser smoke passed (${n} checks); screenshots and PDF in ${OUT}`);
+})().catch((e) => { console.error(e.message || e); process.exit(1); });

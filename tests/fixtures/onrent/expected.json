@@ -1,0 +1,164 @@
+{
+  "jobMap": {
+    "CDR DC4": "50-60-225121",
+    "CDR DC5": "50-60-225120"
+  },
+  "wk1": {
+    "file": "sunbelt_2026-09-19.csv",
+    "as_of": "2026-09-19",
+    "vendor_key": "sunbelt",
+    "lines": 5,
+    "rent_cents": 1085000,
+    "noMonthly": 1,
+    "jobRefs": [
+      "CDR DC4",
+      "CDR DC5",
+      "Campus Lot 7"
+    ]
+  },
+  "wk2": {
+    "file": "sunbelt_2026-09-26.csv",
+    "as_of": "2026-09-26",
+    "lines": 5,
+    "rent_cents": 1005000,
+    "noMonthly": 1,
+    "added": [
+      "1006"
+    ],
+    "dropped": [
+      "1005"
+    ],
+    "kept": 4
+  },
+  "dc4_wk2": {
+    "rent": 490000,
+    "tax": 34300,
+    "markup": 52430,
+    "total": 576730,
+    "lines": 3,
+    "noMonthly": 1
+  },
+  "dc5_wk2": {
+    "rent": 515000,
+    "tax": 36050,
+    "markup": 55105,
+    "total": 606155,
+    "lines": 2,
+    "noMonthly": 0
+  },
+  "ur_generic": {
+    "file": "united_rentals_report.xlsx",
+    "as_of": "2026-09-26",
+    "vendor_key": "united_rentals",
+    "lines": 2,
+    "rent_cents": 510000,
+    "noMonthly": 1
+  },
+  "mcw": {
+    "file": "mcw_2026-09-26.csv",
+    "vendor_key": "mcw",
+    "liberty_owned": 2,
+    "rent_cents": 275000
+  },
+  "sunbelt": {
+    "file": "sunbelt_account_export.csv",
+    "vendor_key": "sunbelt",
+    "layout": "sunbelt",
+    "lines": 6,
+    "rent_cents": 955000,
+    "repeats": 1,
+    "noMonthly": 0,
+    "jobRefs": [
+      "LIBERTY - CEDAR RAPIDS LT1",
+      "QTS DC4",
+      "SBN 201-204"
+    ],
+    "period": "4week",
+    "seqs": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      2
+    ]
+  },
+  "herc": {
+    "file": "Equipment_On_Rent_Summary-06-24-2026_175716.xlsx",
+    "vendor_key": "herc",
+    "layout": "herc",
+    "lines": 4,
+    "rent_cents": 274000,
+    "repeats": 1,
+    "as_of": "2026-10-01",
+    "skipped": 1,
+    "equipment": [
+      "9253354",
+      "9253354",
+      "138385",
+      "9253354"
+    ],
+    "seqs": [
+      1,
+      2,
+      1,
+      1
+    ]
+  },
+  "ur": {
+    "file": "Equipment_On_Rent_-_All_Jobs_2026-09-26-08.00.00.xlsx",
+    "vendor_key": "united_rentals",
+    "layout": "united_rentals",
+    "lines": 7,
+    "rent_cents": 727000,
+    "repeats": 1,
+    "noUnit": 1,
+    "as_of": "2026-09-26",
+    "equipment": [
+      "11334445",
+      "535-2020",
+      "6002410",
+      "6002410",
+      "6002410",
+      "PV1689647",
+      "11999999"
+    ],
+    "jobRefs": [
+      "CDR E1 - LOENBRO",
+      "CDR-SCCI-DC4",
+      "CDR-SCCI-DC4.DC5"
+    ]
+  },
+  "urJobMap": {
+    "CDR-SCCI-DC4": "50-60-225121"
+  },
+  "es": {
+    "file": "EquipShare_rentals-export_9.4.26.csv",
+    "vendor_key": "equipmentshare",
+    "layout": "equipmentshare",
+    "lines": 4,
+    "rent_cents": 257150,
+    "as_of": "2026-09-04",
+    "notCounted": {
+      "Off-rent": 1
+    },
+    "equipment": [
+      "#748680",
+      "#742475",
+      "500-1203",
+      "#530093"
+    ],
+    "jobRefs": [
+      "Cedar Rapids",
+      "PDX-202",
+      "PDX-203"
+    ]
+  },
+  "ur_dc4": {
+    "lines": 3,
+    "rent": 353500,
+    "tax": 24745,
+    "markup": 37825,
+    "total": 416070
+  }
+}

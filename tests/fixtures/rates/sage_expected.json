@@ -1,0 +1,33 @@
+{
+  "file": "Sage_Rate_Tables_2026.xlsx",
+  "tables": 2,
+  "rates": 27,
+  "skipped": 1,
+  "codes": [
+    "#225121",
+    "#224050"
+  ],
+  "dc4": {
+    "classes": [
+      "#CARP-J",
+      "#LAB-GF",
+      "#LAB-J",
+      "#SUP"
+    ],
+    "effectiveDates": [
+      "2025-06-01",
+      "2026-06-01"
+    ],
+    "rates": 24
+  },
+  "labJReg2025": {
+    "from": "2025-06-01",
+    "to": "2026-06-01",
+    "cents": 8725
+  },
+  "labJReg2026": {
+    "from": "2026-06-01",
+    "to": null,
+    "cents": 9025
+  }
+}
