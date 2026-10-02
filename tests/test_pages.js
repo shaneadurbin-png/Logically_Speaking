@@ -1,7 +1,7 @@
 /* test_pages.js - three routes. The portfolio stops after the ten campuses.
    A campus page lists only that campus's projects. A project page is one job. */
 "use strict";
-const fs = require("fs"), path = require("path");
+const fs = require("fs"), path = require("path"), vm = require("vm");
 const { check, eq, ok, done } = require("./lib.js");
 const Pages = require("../app/pages.js");
 const Rev = require("../app/review.js");
@@ -99,6 +99,15 @@ check("#/review redirects to a project, a campus, or the portfolio", () => {
   eq(Pages.reviewRedirect({ page: "review", q: { m: "2026-09" } }, { projects: ["50-60-225008"] }), "#/p/50-60-225008?m=2026-09");
   eq(Pages.reviewRedirect({ page: "review", q: { c: "CDR E1", m: "2026-09" } }, null), "#/c/CDR?m=2026-09");
   eq(Pages.reviewRedirect({ page: "review", q: {} }, { campuses: ["DFW2"] }), "#/c/DFW");
+});
+
+check("a missing map script does not throw while pages.js is loading", () => {
+  const src = fs.readFileSync(path.join(__dirname, "../app/pages.js"), "utf8");
+  const sandbox = { self: {}, console };
+  vm.createContext(sandbox);
+  vm.runInContext(src, sandbox, { filename: "pages.js" });
+  eq(sandbox.self.Pages.CAMPUS_ORDER, ORDER);
+  eq(sandbox.self.Pages.campusCode("CDR E1"), "CDR");
 });
 
 check("the page script mounts these three routes and does not dump every job on #/", () => {

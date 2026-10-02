@@ -16,7 +16,7 @@
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig, PM = root.PortfolioMap, Pages = root.Pages;
-  const RELEASE = "0.1.18";
+  const RELEASE = "0.1.19";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

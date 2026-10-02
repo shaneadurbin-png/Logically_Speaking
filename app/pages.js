@@ -13,7 +13,10 @@
 }(typeof self !== "undefined" ? self : this, function (C, PM) {
   "use strict";
 
-  const ORDER = PM.CAMPUS_ORDER ? PM.CAMPUS_ORDER.slice() : ["PHL", "SBN", "IAD", "PDX", "DFW", "LCK", "CMH", "CDR", "AUS", "BWI"];
+  // portfolio_map.js is the script before this one. If that file is missing,
+  // PM is undefined and reading PM.CAMPUS_ORDER throws while this file is
+  // loading, so the page never defines Pages and the grid stays blank.
+  const ORDER = (PM && PM.CAMPUS_ORDER ? PM.CAMPUS_ORDER : ["PHL", "SBN", "IAD", "PDX", "DFW", "LCK", "CMH", "CDR", "AUS", "BWI"]).slice();
   const ALIAS = { "CDR E1": "CDR", "CDRE1": "CDR", "DFW2": "DFW" };
 
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -22,7 +25,7 @@
   const n1 = (n, one, many) => `${n} ${n === 1 ? one : many || one + "s"}`;
 
   function campusCode(label) {
-    if (PM.canonicalCampus) return PM.canonicalCampus(label);
+    if (PM && PM.canonicalCampus) return PM.canonicalCampus(label);
     const raw = String(label == null ? "" : label).trim();
     if (!raw) return null;
     const k = raw.toUpperCase().replace(/\s+/g, " ");
