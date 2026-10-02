@@ -181,7 +181,8 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   check(rt.includes("missing") || rt.includes("in force"), "Rate tables tab shows rates in force and what is missing");
   await shot("06-settings-rates");
   await nav("#/settings?tab=jobs");
-  check((await text("main")).includes("Rental tax %"), "Jobs tab carries tax, markup and rate table per job");
+  const jobsText = await text("main");
+  check(jobsText.includes("PHL") && jobsText.includes("CDR") && !jobsText.includes("JobShort name") && !jobsText.includes("CDR E1"), "Jobs tab groups projects by campus code");
   await nav("#/settings?tab=employees");
   check((await text("main")).includes("Certified class"), "Employees tab sets the certified class");
   check(/Prefix defaults[\s\S]*FB5/.test(await text("main")), "the prefix defaults are a table on the Employees tab");

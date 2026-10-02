@@ -285,3 +285,25 @@ body:has(.pf) main { max-width: 1280px; }
 .gr-dash table.tbl th, .gr-dash table.tbl td, .gr-dash .dleg td, .gr-dash .kpi .v { font-family: inherit; }
 .gr-dash .dleg td { border: 0; }
 .gr-dash .only { font-family: inherit; }
+
+/* Settings → Jobs: campus groups, one line per project, editor beside the list. */
+.jobs-set { display: block; }
+.jobs-set.has-editor { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; align-items: start; }
+.jobs-list { min-width: 0; }
+.jobs-add { margin: 0 0 8px; }
+.job-campus h2 { margin: 16px 0 4px; color: var(--ink); font-size: 15px; letter-spacing: .14em; }
+.job-line { display: grid; grid-template-columns: minmax(4.5rem, 8.5rem) max-content minmax(0, 1fr) max-content; gap: 8px 16px; align-items: baseline; width: 100%; text-align: left; background: transparent; color: inherit; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 7px 4px; text-decoration: none; }
+a.job-line:hover { text-decoration: none; background: rgba(90, 169, 255, .08); border-bottom-color: var(--line); color: inherit; }
+a.job-line.on { background: rgba(90, 169, 255, .14); box-shadow: inset 3px 0 0 var(--accent); }
+.job-short { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-num { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+.job-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.job-rate { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
+.job-editor { position: sticky; top: 72px; background: var(--navy-2); border: 1px solid var(--line); border-radius: 10px; padding: 16px 16px 12px; min-width: 0; }
+.job-editor h2 { margin: 0 0 12px; color: var(--ink); text-transform: none; letter-spacing: .02em; font-size: 18px; }
+.job-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+.job-fields input, .job-fields select { width: 100%; }
+.job-read { display: grid; grid-template-columns: 7.5rem 1fr; gap: 6px 10px; margin: 0 0 12px; }
+.job-read dt { color: var(--muted); font-size: 12px; }
+.job-read dd { margin: 0; }
+@media (max-width: 860px) { .jobs-set.has-editor { grid-template-columns: 1fr; } .job-editor { position: static; } }
