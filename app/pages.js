@@ -143,7 +143,7 @@
     return `${chrome}<div class="pf" data-page="portfolio">
       <div class="pf-head">
         <div class="pf-intro">
-          <h1 class="pf-title">Mission Critical</h1>
+          <h1 class="pf-title">${esc(o.title || "Mission Critical")}</h1>
           <p class="pf-sub">${esc(n1(ORDER.length, "campus", "campuses"))} · ${esc(money(tot.all))} this month. Figures come from HH2, the on-rent reports, and Purchase Pro.</p>
         </div>
         <div class="pf-tools noprint">

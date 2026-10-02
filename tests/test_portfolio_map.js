@@ -170,6 +170,26 @@ check("the portfolio campuses are PHL, SBN, IAD, PDX, DFW, LCK, CMH, CDR, AUS, B
   ok(Math.hypot(gap[0], gap[1]) >= 12, "LCK is offset from CMH so both dots show");
 });
 
+check("the portfolio list is the ten codes, with CDR E1 and DFW2 folded in and no All row", () => {
+  const Pages = require("../app/pages.js");
+  const html = Pages.portfolio({
+    title: "Mission Critical",
+    month: "2026-10",
+    jobs: [
+      { job_number: "a", short_name: "DC4", campus: "CDR E1", region: "Cedar Rapids, IA", active: true },
+      { job_number: "b", short_name: "DC1", campus: "DFW2", region: "Dallas-Fort Worth, TX", active: true },
+    ],
+    rows: [],
+  });
+  ok(html.includes("Mission Critical"), "heading");
+  ok(!/pf-all|>All</.test(html), "no All row");
+  ok(!html.includes("CDR E1") && !html.includes("DFW2"), "prefixes are not the row labels");
+  const names = [];
+  html.replace(/class="pf-row-name">([^<]+)/g, (_, n) => { names.push(n); return _; });
+  eq(names, ["PHL", "SBN", "IAD", "PDX", "DFW", "LCK", "CMH", "CDR", "AUS", "BWI"]);
+  ok(html.includes('data-campus="CDR"') && html.includes('data-campus="DFW"'), "map dots use the codes");
+});
+
 check("a campus and a project read Campus > Project", () => {
   eq(PM.selectionLabel("AUS", "DC4"), "AUS > DC4");
   eq(PM.selectionLabel("CDR E1", "DC4"), "CDR E1 > DC4");

@@ -95,4 +95,21 @@ check("topView is the headerMarkup path and does not inline report chips", () =>
   ok(!/HH2 through|No on-rent report|POs as of|JCTD through|fileName|file_name/.test(body), "topView does not print report names");
 });
 
+check("the served page and ui.js stay on one release and draw Mission Critical", () => {
+  const root = path.join(__dirname, "..");
+  const ui = fs.readFileSync(path.join(root, "app/ui.js"), "utf8");
+  const cfg = fs.readFileSync(path.join(root, "app/config.js"), "utf8");
+  const html = fs.readFileSync(path.join(root, "CostTracker.html"), "utf8");
+  const rel = (ui.match(/const RELEASE = "([^"]+)"/) || [])[1];
+  ok(rel && cfg.includes(`RELEASE: "${rel}"`), `config.js is ${rel}`);
+  const versions = [...html.matchAll(/\?v=(\d+\.\d+\.\d+)/g)].map((m) => m[1]);
+  ok(versions.length >= 20 && versions.every((v) => v === rel), `CostTracker.html ?v= ${[...new Set(versions)].join(",")}`);
+  ok(html.includes(`app/pages.js?v=${rel}`) && html.includes(`app/ui.js?v=${rel}`), "pages.js loads before the page");
+  const headerStart = ui.indexOf("function headerMarkup");
+  const headerEnd = ui.indexOf("async function topView");
+  const header = ui.slice(headerStart, headerEnd);
+  ok(!/HH2 through|United Rentals|POs as of|JCTD through|chip\(age/.test(header), "headerMarkup does not list report chips");
+  ok(ui.includes('title: "Mission Critical"'), "ui.js names the portfolio");
+});
+
 done();

@@ -31,17 +31,21 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   await page.goto(`${BASE}/CostTracker.html#/?m=2026-09`);
   await page.waitForSelector("header.top");
   check((await text("header.top")).includes("Demo"), "header says demo mode");
-  check((await page.$$("main .pf-row")).length === 10, "Portfolio lists the ten campuses");
+  const emptyOrder = await page.$$eval("a.pf-row[data-campus]", (els) => els.map((e) => e.getAttribute("data-campus")));
+  check(emptyOrder.join(",") === "PHL,SBN,IAD,PDX,DFW,LCK,CMH,CDR,AUS,BWI", "Portfolio lists the ten campuses, in order");
   check((await text("main")).includes("Mission Critical"), "portfolio heading");
+  check(!(await text("main")).includes("Weekly Labor Burn"), "portfolio does not include weekly detail");
   await shot("01-portfolio-empty");
 
-  await nav("#/review");
-  check((await text(".gr-dash")).includes("GR Weekly Cost Review"), "weekly review opens on an empty workspace");
+  await nav("#/review?m=2026-09");
+  check((await page.evaluate(() => location.hash)).startsWith("#/?"), "review with nothing selected returns to the portfolio");
+  await nav("#/p/50-60-225121?m=2026-09");
+  check((await text(".gr-dash")).includes("GR Weekly Cost Review"), "weekly review opens on one project");
   check((await text("#kpiLaborCost")) === "$0.00", "empty labor burn is zero");
-  check((await page.$$("main .cards .card")).length === 0, "the review is not the portfolio cards");
-  await nav("#/review?tab=rental");
-  check((await text(".gr-dash")).includes("Week Ending selection does not apply"), "rental tab says the week slicer does not apply");
-  await nav("#/review?tab=po");
+  check((await text("main")).includes("CDR") && (await text("main")).includes("DC4"), "the project header is Campus > Project");
+  await nav("#/p/50-60-225121?m=2026-09&tab=rental");
+  check((await text(".gr-dash")).includes("does not apply"), "rental tab says the week slicer does not apply");
+  await nav("#/p/50-60-225121?m=2026-09&tab=po");
   check((await text(".gr-dash")).includes("Weekly Committed POs"), "committed PO tab opens");
   await nav("#/?m=2026-09");
 
@@ -102,19 +106,20 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   check(!(await text("header.top")).includes("HH2 through") && !(await text("header.top")).includes("POs as of") && (await text("header.top")).includes("Portfolio"), "header keeps navigation and omits the report chips");
   const campuses = await page.$$eval("main .pf-row .pf-row-name", (els) => els.map((e) => e.textContent.trim()));
   console.log("    campuses: " + campuses.join(" / "));
-  check(campuses.length === 10, "jobs are grouped by the ten campuses");
+  check(campuses.join(",") === "PHL,SBN,IAD,PDX,DFW,LCK,CMH,CDR,AUS,BWI", "the ten campuses stay in order");
   check(!/110\s+110/.test(await text("main")), "a register job is not named twice on the portfolio");
   await shot("04-portfolio");
 
-  await nav("#/review");
+  await nav("#/p/50-60-225121?m=2026-09");
   const laborKpi = await text("#kpiLaborCost");
   console.log("    review labor " + laborKpi);
-  check(laborKpi && laborKpi !== "$0.00", "weekly review prices the recorded week");
+  check(laborKpi && laborKpi !== "$0.00", "weekly review prices the recorded week for this job");
+  check(!(await text("main")).includes("50-60-225008"), "the project page does not render another job");
   await shot("04b-review-labor");
-  await nav("#/review?tab=rental");
+  await nav("#/p/50-60-225121?m=2026-09&tab=rental");
   check((await text(".gr-dash")).includes("Weekly Rental Burn"), "rental burn opens after record");
   await shot("04c-review-rental");
-  await nav("#/review?tab=po");
+  await nav("#/p/50-60-225121?m=2026-09&tab=po");
   check((await text(".gr-dash")).includes("Weekly Committed POs"), "committed POs open after record");
   await shot("04d-review-po");
 
@@ -164,8 +169,10 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   const sm2 = (await text("main")).replace(/\s+/g, " ");
   check(sm2.includes("WM-77") && sm2.includes("from the log"), "a logged pull shows in the log and counts for its hauler");
   await shot("05c-job-dc5-site-services");
+  await nav("#/c/CDR?m=2026-09");
+  check((await text("main")).includes("DC5") && (await text("main")).includes("50-60-225120"), "the CDR page lists DC5");
+  check(!(await text("main")).includes("Weekly Labor Burn"), "the campus page is project links, not the weekly review");
   await nav("#/?m=2026-09");
-  check((await text("main")).includes("17 restrooms · 9 buildings · 7 pulls"), "the DC5 card says 17 restrooms, 9 buildings, 7 pulls");
   await nav("#/settings?tab=waste");
   check((await text("main")).includes("sourgum") && (await text("main")).includes("waste management"), "Settings / Haulers lists both haulers");
 
