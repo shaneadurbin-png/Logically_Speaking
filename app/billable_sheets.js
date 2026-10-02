@@ -64,9 +64,14 @@
     return { text: `Standard Rates ${m[1]} - ${m[2]}`, from, to: C.addDays(end, 1) };
   }
 
-  /** Certified class the labor model prices, or null when the trade is not one of ours. */
+  /** Certified class the labor model prices, or null when the trade is not one of ours.
+      Apprentices, basic laborers, project managers, and welders are not guessed into a journeyman class. */
   function classCode(title) {
     const s = String(title || "").toUpperCase();
+    if (/\bAPPRENTICE\b/.test(s)) return null;
+    if (/\bBASIC\b/.test(s) && /\bLABOU?RERS?\b/.test(s)) return null;
+    if (/\bPROJECT\s+MANAGER\b/.test(s)) return null;
+    if (/\bWELDER\b/.test(s)) return null;
     if (/QA\s*\/?\s*QC/.test(s)) return "#QAQC";
     const gen = /\bGENERAL\b/.test(s) || /\bGEN\b/.test(s);
     const fore = /\bFOREMAN\b/.test(s) || /\bFOREMEN\b/.test(s);
@@ -153,7 +158,7 @@
   function redateStale(fileName, sheets) {
     const groups = new Map();
     for (const sh of sheets) {
-      if (!sh.bannerText || !sh.titles.length) continue;
+      if (sh.noRedate || !sh.bannerText || !sh.titles.length) continue;
       const key = sh.titles.map((t) => t.toUpperCase().replace(/\s+/g, " ").trim()).join(" | ") + "\n" + sh.bannerText;
       const arr = groups.get(key) || [];
       arr.push(sh);
@@ -210,12 +215,29 @@
     t.effectiveDates.add(rate.effective_from);
   }
 
+  function payIdsFor(kind, code, mode) {
+    if (mode === "split") {
+      const open = code === "#QAQC" || String(code).indexOf("#CARP") === 0;
+      if (kind === "ST") return open ? ["REG"] : ["UNION REG"];
+      if (kind === "OT") return open ? ["O/T"] : ["UNION O/T"];
+      return open ? ["D/T", "DOUBLETIME"] : ["UNION D/T", "DOUBLETIME"];
+    }
+    return PAY_IDS[kind];
+  }
+  function omitPay(sh, code, kind) {
+    if (sh.omitCarpJdt && code === "#CARP-J" && kind === "DT" && (sh.from === "2026-01-01" || sh.from === "2028-01-01")) return true;
+    if (sh.omit && sh.omit(code, kind, sh.from, sh.table.code)) return true;
+    return false;
+  }
   function emitSheet(tables, sh, fileName) {
     const excelRow = sh.billRow + 1;
+    let held = 0;
     for (const col of sh.cols) {
       if (!col.code) continue;
       ["ST", "OT", "DT"].forEach((kind, ki) => {
-        for (const pay of PAY_IDS[kind]) {
+        if (col.amounts[ki] == null) return;
+        if (omitPay(sh, col.code, kind)) { held++; return; }
+        for (const pay of payIdsFor(kind, col.code, sh.payMode)) {
           addRate(tables[sh.table.code], {
             rate_table_code: sh.table.code,
             certified_class: col.code,
@@ -228,11 +250,13 @@
         }
       });
     }
+    return held;
   }
 
-  function readSheet(rows, sheetName, fileName) {
+  function readSheet(rows, sheetName, fileName, plan) {
+    const marker = (plan && plan.marker) || MARKER;
     const header = payHeader(rows);
-    if (!header) throw new C.UnknownFormat(`${baseName(fileName)}: sheet "${sheetName}" has ${MARKER} and no ST / OT / DT header.`);
+    if (!header) throw new C.UnknownFormat(`${baseName(fileName)}: sheet "${sheetName}" has ${marker} and no ST / OT / DT header.`);
     let bannerRow = -1, banner = null;
     for (let i = header.row - 1; i >= Math.max(0, header.row - 8); i--) {
       for (const v of rows[i] || []) {
@@ -245,11 +269,14 @@
       }
       if (banner) break;
     }
-    if (!banner) throw new C.UnknownFormat(`${baseName(fileName)}: sheet "${sheetName}" has ${MARKER} and no "Standard Rates M/D/YY - M/D/YY" banner.`);
+    if (!banner) throw new C.UnknownFormat(`${baseName(fileName)}: sheet "${sheetName}" has ${marker} and no "Standard Rates M/D/YY - M/D/YY" banner.`);
+    if (plan && plan.onlyFrom && plan.onlyFrom.indexOf(banner.from) < 0) return { skipped: 0, sheet: null };
+    if (plan && plan.skipFrom && plan.skipFrom.indexOf(banner.from) >= 0) return { skipped: 1, sheet: null };
     let billRow = -1;
     for (let i = 0; i < rows.length; i++) {
-      if ((rows[i] || []).some((v) => cellText(v) === MARKER)) { billRow = i; break; }
+      if ((rows[i] || []).some((v) => cellText(v) === marker)) { billRow = i; break; }
     }
+    if (billRow < 0) return { skipped: 0, sheet: null };
     const cols = [];
     const titles = [];
     let skipped = 0;
@@ -259,14 +286,17 @@
       if (!title) throw new C.UnknownFormat(`${baseName(fileName)}: sheet "${sheetName}" column ${group.ST + 1} has ST / OT / DT and no class title above it.`);
       const own = bannerFor(rows, bannerRow, group, prevEnd, banner);
       if (own && own.bad) throw new C.UnknownFormat(`${baseName(fileName)}: sheet "${sheetName}" banner "${own.bad}" is not a date range.`);
-      const code = classCode(title);
+      let code = classCode(title);
+      if (code && plan && plan.allow && !plan.allow(code)) { skipped++; code = null; }
       const amounts = [];
       if (code) {
         for (const kind of ["ST", "OT", "DT"]) {
           const raw = (rows[billRow] || [])[group[kind]];
+          const text = cellText(raw);
           const cents = C.cents(raw);
           if (cents == null || Number.isNaN(cents) || cents < 0) {
-            throw new C.UnknownFormat(`${baseName(fileName)}: sheet "${sheetName}" row ${billRow + 1}, ${title} ${kind}: "${cellText(raw)}" is not money.`);
+            if (plan && plan.holdBroken && (text === "[" || text === "")) { amounts.push(null); skipped++; continue; }
+            throw new C.UnknownFormat(`${baseName(fileName)}: sheet "${sheetName}" row ${billRow + 1}, ${title} ${kind}: "${text}" is not money.`);
           }
           amounts.push(cents);
         }
@@ -275,15 +305,122 @@
       cols.push({ title, code, amounts });
       prevEnd = group.DT;
     }
+    const nums = cols.reduce((a, c) => a.concat(c.amounts.filter((n) => n != null)), []);
+    if (nums.length && nums.every((n) => n === 2300)) return { skipped: skipped + 1, sheet: null };
     if (!titles.length) return { skipped, sheet: null };
-    const table = tableFor(titles, sheetName, fileName);
+    const table = plan && plan.table ? plan.table : tableFor(titles, sheetName, fileName);
     return {
       skipped,
       sheet: {
         sheetName, titles, cols, table, billRow,
         bannerText: banner.text, from: banner.from, to: banner.to,
+        noRedate: !!(plan && plan.noRedate), omit: plan && plan.omit, omitCarpJdt: !!(plan && plan.omitCarpJdt),
+        payMode: plan && plan.payMode,
       },
     };
+  }
+
+  const MARK_GL = "Billable Rate (GL Excluded)";
+  const MARK_WC = "Billable Rate (WC&GL Excluded)";
+  function hasLabel(rows, label) {
+    for (const r of rows) for (const v of r || []) if (cellText(v) === label) return true;
+    return false;
+  }
+  /** A file this drop must not record. Null when the name is not one of those. */
+  function refusedFile(fileName) {
+    const n = baseName(fileName);
+    const say = (msg) => `${n}: ${msg}`;
+    if (/AUS_4_5_CCIP_Billable_Rates_2026_-_Work_Order/i.test(n)) {
+      return say("the banner says CCIP, but these are not the CCIP grid. Carpenter matches the Temple Standard Insurance 5% block and laborer matches the plain standard row, for the same 2026 period as #AUS-CCIP with different cents. Not loaded.");
+    }
+    if (/Temple_CCIP_2026-2029/i.test(n)) {
+      return say("not loaded on top of the Temple workbook. It would write #CARP-J double time for 2026 ($123.00) and 2028 ($136.50); the blended Billable Rate (Standard) row says $142.75 and $156.25.");
+    }
+    if (/IOWA_-_Laborers_Carpenters/i.test(n) && /\.pdf$/i.test(n)) {
+      return say("the Iowa workbook is the source for #IA. This PDF matches that workbook, so it is not loaded on top of it.");
+    }
+    if (/Laborers_Carpenters_901e/i.test(n)) {
+      return say("the rate card says San Francisco. It is not an Ohio table, and the Ohio-titled carpenter tab has no campus this page will invent.");
+    }
+    if (/Lump_Sum_Rates/i.test(n)) {
+      return say("refused as a lump sum (the sheet never states one) and refused into the hourly Virginia or Maryland tables. The banner says Virginia, and the hourly laborer rates disagree with that card.");
+    }
+    if (/DFW2_DC6/i.test(n)) {
+      return say("the Billable Rate (Standard) build-up is not text this page can read. The narrative 75.00 and 92.67 blended figures are not straight, overtime, or double time, and they are not stored on #DFW-DC6.");
+    }
+    if (/Building_Trades_Wage_Rate/i.test(n)) return say("this is the union's wage and fringe posting, not Liberty's billable rate sheet.");
+    if (/Higway_Heavy|Highway_Heavy/i.test(n)) return say("this is the highway-heavy carpenter agreement, not Liberty's billable rate sheet.");
+    if (/Local_423_Building_Agreement/i.test(n)) return say("this is Local 423's building agreement, not Liberty's billable rate sheet.");
+    if (/CBA_CP-Contract/i.test(n)) return say("this is the carpenters' agreement, not Liberty's billable rate sheet.");
+    if (/329_-_Building/i.test(n)) return say("this is Local 329's building agreement, not Liberty's billable rate sheet.");
+    if (/apprenticeship_scale/i.test(n)) return say("this is Local 329's apprentice wage scale, not Liberty's billable rate sheet.");
+    if (/Working_Dues|Dues_Check-Off/i.test(n)) return say("this is a dues remittance form, not Liberty's billable rate sheet.");
+    if (/LABORERS_BUILDING_WAGE_RATES/i.test(n)) return say("this is Local 329's wage and fringe exhibit, not Liberty's billable rate sheet.");
+    if (/Local_423_f080/i.test(n)) return say("this is Local 423's wage and fringe sheet, not Liberty's billable rate sheet.");
+    if (/71fce53f-2a0a-4b9b-8edb-996e03f920a7|edbe25ee-fd07-4f43-9e27-8d7311f35e70/i.test(n)) return say("this is the union's wage notice, not Liberty's billable rate sheet.");
+    return null;
+  }
+  function sheetPlan(fileName, sheetName) {
+    const file = baseName(fileName), sheet = sheetName;
+    if (/Temple_CCIP_2026-2027|Temple_CCIP_2028-2029/i.test(file)) {
+      if (/^Blended (Carpenter|Laborer)_/i.test(sheet)) return { table: { code: "#TEMPLE-CCIP", description: "Temple CCIP billable" }, omitCarpJdt: true, noRedate: true };
+      return { skip: true };
+    }
+    if (/IOWA_-_Laborers_Carpenters/i.test(file) && /\.xlsx$/i.test(file)) {
+      if (/^(Carpenter|Laborer) Rate_6-30-2[678]$/.test(sheet)) return { table: { code: "#IA", description: "Iowa billable" }, noRedate: true };
+      return { skip: true };
+    }
+    if (/Ohio_Rate_Sheet-_Laborers_329/i.test(file)) {
+      const std = { code: "#OH-329", description: "Ohio Local 329 billable" };
+      if (/^Laborer Rate_6-30-2[789]$/.test(sheet)) return { table: std, noRedate: true };
+      if (/^Carpenter Rate_6-30-2[789]$/.test(sheet)) return {
+        noRedate: true,
+        markers: [
+          { marker: MARKER, table: std, allow: (c) => c === "#CARP-J" },
+          { marker: MARK_WC, table: { code: "#OH-329-CCIP", description: "Ohio Local 329 CCIP billable" }, allow: (c) => c === "#CARP-J" || c === "#CARP-F" || c === "#CARP-GF", onlyFrom: ["2026-07-01"] },
+          { marker: MARK_GL, table: { code: "#OH-329-GLX", description: "Ohio Local 329 GL excluded billable" }, allow: (c) => c === "#CARP-J" || c === "#CARP-F" || c === "#CARP-GF", onlyFrom: ["2026-07-01"] },
+        ],
+      };
+      return { skip: true };
+    }
+    if (/Ohio_Rate_Sheet-_Laborers_423/i.test(file)) {
+      if (/^Carpenter Rate_6-30-2[789]$/.test(sheet)) return { table: { code: "#OH-423", description: "Ohio Local 423 billable" }, allow: (c) => c === "#CARP-J", noRedate: true };
+      return { skip: true };
+    }
+    if (/_MD_Mission_Critical_Billable_Rates_-_Laborers_Carpenters_8dd6/i.test(file) || /_VA_Mission_Critical_Billable_Rates_-_Laborers_Carpenters_024a/i.test(file)) {
+      const table = { code: "#IAD-VA-MC", description: "IAD Virginia mission critical billable" };
+      if (sheet === "Carpenter Rate_6-30-26" || sheet === "Laborer Rate_6-30-26") return { table, payMode: "split", noRedate: true };
+      if (sheet === "Carpenter Rate_6-30-27") return { table, payMode: "split", allow: (c) => c.indexOf("#CARP") === 0 || c === "#QAQC", noRedate: true };
+      return { skip: true };
+    }
+    if (/PA_Billable_Rates_-_Laborers_Carpenters_8ef7/i.test(file)) {
+      if (!/^(Carpenter|Laborer) Rate_/.test(sheet) || /29$/.test(sheet)) return { skip: true };
+      return {
+        noRedate: true, skipFrom: ["2026-05-01"],
+        markers: [
+          { marker: MARKER, table: { code: "#PA", description: "Jermyn PA billable" } },
+          { marker: MARK_GL, table: { code: "#PA-GLX", description: "Jermyn PA GL excluded billable" } },
+          { marker: MARK_WC, table: { code: "#PA-CCIP", description: "Jermyn PA CCIP billable" } },
+        ],
+      };
+    }
+    if (/West_Texas_Rates/i.test(file)) {
+      if (!/^(Carpenter|Laborer) Rate_12-31-/.test(sheet)) return { skip: true };
+      return {
+        noRedate: true, holdBroken: true,
+        omit(code, kind, from, tableCode) {
+          if (tableCode === "#WTX" && code === "#CARP-GF" && from === "2028-01-01") return true;
+          if (tableCode === "#WTX" && code === "#LAB-GF" && from === "2027-01-01" && (kind === "OT" || kind === "DT")) return true;
+          if (tableCode === "#WTX-CCIP" && code === "#LAB-GF" && from === "2027-01-01" && kind === "ST") return true;
+          return false;
+        },
+        markers: [
+          { marker: MARKER, table: { code: "#WTX", description: "West Texas billable" } },
+          { marker: MARK_WC, table: { code: "#WTX-CCIP", description: "West Texas CCIP billable" } },
+        ],
+      };
+    }
+    return null;
   }
 
   function looksLike(wb) {
@@ -302,12 +439,30 @@
   }
 
   function readWorkbook(wb, fileName = "this file") {
+    const refused = refusedFile(fileName);
+    if (refused) throw new C.NotForThisPage(refused);
     const tables = {};
     const parsed = [];
     let skipped = 0, blank = 0;
+    const directed = wb.SheetNames.some((name) => sheetPlan(fileName, name));
     for (const name of wb.SheetNames) {
       const rows = C.rowsOf(wb.Sheets[name]);
       if (sheetEmpty(rows)) { blank++; continue; }
+      const plan = directed ? sheetPlan(fileName, name) : null;
+      if (directed) {
+        if (!plan || plan.skip) { skipped++; continue; }
+        const markers = plan.markers || [{ marker: MARKER, table: plan.table, allow: plan.allow }];
+        let saw = false;
+        for (const m of markers) {
+          if (!hasLabel(rows, m.marker)) continue;
+          saw = true;
+          const got = readSheet(rows, name, fileName, Object.assign({}, plan, m));
+          skipped += got.skipped;
+          if (got.sheet) parsed.push(got.sheet);
+        }
+        if (!saw) skipped++;
+        continue;
+      }
       if (!hasMarker(rows)) { skipped++; continue; }
       const got = readSheet(rows, name, fileName);
       skipped += got.skipped;
@@ -319,7 +474,7 @@
         code: sh.table.code, description: sh.table.description, rates: [], effectiveDates: new Set(), _seen: {},
       });
       if (!t.description) t.description = sh.table.description;
-      emitSheet(tables, sh, fileName);
+      skipped += emitSheet(tables, sh, fileName) || 0;
     }
     return finishTables(fileName, tables, skipped, blank);
   }
@@ -833,8 +988,10 @@
       }
     }
     const frags = [];
+    let pageN = 0;
     for (const obj of cache.values()) {
       if (!obj || !isName(obj.Type, "Page")) continue;
+      const mark = frags.length;
       let contents = deref(obj.Contents, getObj);
       const list = Array.isArray(contents) ? contents : contents ? [contents] : [];
       let res = obj.Resources;
@@ -849,6 +1006,8 @@
         const data = stream && (stream._data || null);
         if (data) interpret(data, res, ctm, frags, getObj, 0);
       }
+      for (let i = mark; i < frags.length; i++) frags[i].y += pageN * 100000;
+      pageN++;
     }
     return groupLines(frags);
   }
@@ -856,9 +1015,10 @@
   // ---- PDF schedule -------------------------------------------------------------
   function moneysOf(text) {
     const out = [];
-    const re = /\$?\s*(\d{1,3}(?:,\d{3})*\.\d{2})\b/g;
+    const src = String(text).replace(/(\d\.\d)\s+(\d)/g, "$1$2");
+    const re = /\$?\s*(\d{1,3}(?:,\d{3})*\.\d{2})/g;
     let m;
-    while ((m = re.exec(text))) {
+    while ((m = re.exec(src))) {
       const cents = C.cents(m[1].replace(/,/g, ""));
       if (cents != null && !Number.isNaN(cents)) out.push(cents);
     }
@@ -867,7 +1027,7 @@
   function datesOf(text) {
     const norm = text.replace(/\s*\/\s*/g, "/");
     const out = [];
-    const re = /(\d{1,2})\/(\d{1,2})\/(\d{4})/g;
+    const re = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g;
     let m;
     while ((m = re.exec(norm))) {
       const iso = C.parseDate(`${+m[1]}/${+m[2]}/${m[3]}`);
@@ -888,6 +1048,63 @@
   const NOT_SCHEDULE = (fileName) => new C.NotForThisPage(`${baseName(fileName)}: not a Liberty billable rate schedule. PDFs (HH2 timecards, rental invoices, sales tickets) are read in the next release.`);
   const WAGE = (fileName) => new C.NotForThisPage(`${baseName(fileName)}: this is the union's wage notice, not Liberty's billable rate sheet.`);
 
+  function pdfRoute(fileName) {
+    const name = baseName(fileName);
+    if (/DFW2_DC1/i.test(name)) return { code: "#DFW-DC1", description: "DFW DC1 TFO billable" };
+    if (/AUS_4_5_CCIP_2026-2029/i.test(name)) return { code: "#AUS-CCIP", description: "AUS CCIP billable", omitCarpJdt: true };
+    if (/_VA_Mission_Critical_.*\.pdf$/i.test(name)) return {
+      code: "#IAD-VA-MC", description: "IAD Virginia mission critical billable", payMode: "split",
+      keep(from, code) {
+        if (from === "2025-07-01") return true;
+        return from === "2026-07-01" && (code.indexOf("#CARP") === 0 || code === "#QAQC");
+      },
+    };
+    if (/_MD_Mission_Critical_.*\.pdf$/i.test(name)) return { code: "#IAD-MD-MC", description: "IAD Maryland mission critical billable", payMode: "split" };
+    if (/Safety_PM_SPM_WC_GL/i.test(name)) return { staff: "#PA-STAFF-CCIP", description: "Jermyn PA staff CCIP billable" };
+    if (/Safety_PM_SPM_GL_EXCLUDED/i.test(name)) return { staff: "#PA-STAFF-GLX", description: "Jermyn PA staff GL excluded billable" };
+    if (/Safety_PM_SPM/i.test(name)) return { staff: "#PA-STAFF", description: "Jermyn PA staff billable" };
+    if (/PA_Billable_Rates_.*WC_GL_EXCLUDED/i.test(name)) return { code: "#PA-CCIP", description: "Jermyn PA CCIP billable", skipFrom: ["2026-05-01"] };
+    if (/PA_Billable_Rates_.*GL_EXCLUDED/i.test(name)) return { code: "#PA-GLX", description: "Jermyn PA GL excluded billable", skipFrom: ["2026-05-01"] };
+    if (/PA_Billable_Rates_/i.test(name)) return { code: "#PA", description: "Jermyn PA billable", skipFrom: ["2026-05-01"] };
+    return null;
+  }
+  function staffCode(label) {
+    const s = String(label || "").toUpperCase();
+    if (/SAFETY\s+MANAGER/.test(s)) return "#SAFETY";
+    if (/SPM/.test(s) && /SUPERINTENDENT/.test(s)) return "#SUP";
+    if (/\bPROJECT\s+MANAGER\b/.test(s)) return "#PM";
+    return null;
+  }
+  function staffSchedule(lines, fileName, route) {
+    const rates = [];
+    const seen = {};
+    lines.forEach((line, idx) => {
+      const label = line.text.split(/\$|\d+\.\d{2}/)[0];
+      const code = staffCode(label);
+      if (!code) return;
+      const moneys = moneysOf(line.text);
+      if (moneys.length !== 3) throw new C.UnknownFormat(`${baseName(fileName)}: "${line.text}" does not have the 2026, 2027, and 2028 straight rates.`);
+      [2026, 2027, 2028].forEach((year, i) => {
+        for (const pay of ["REG", "UNION REG"]) {
+          const rate = {
+            rate_table_code: route.staff, certified_class: code, pay_id: pay, rate_cents: moneys[i],
+            effective_from: `${year}-01-01`, effective_to: `${year + 1}-01-01`, row_index: idx + 1,
+          };
+          const key = [code, pay, rate.effective_from].join("|");
+          if (seen[key] == null) { seen[key] = rate.rate_cents; rates.push(rate); }
+        }
+      });
+    });
+    if (!rates.length) throw new C.UnknownFormat(`${baseName(fileName)} has no Safety Manager, Project Manager, or SPM / Superintendent straight rates.`);
+    const t = {
+      code: route.staff, description: route.description, rates,
+      effectiveDates: [...new Set(rates.map((r) => r.effective_from))].sort(),
+    };
+    t.classes = [...new Set(rates.map((r) => r.certified_class))].sort();
+    t.latest = t.effectiveDates[t.effectiveDates.length - 1];
+    t.rates.sort((a, b) => (a.certified_class + a.pay_id + a.effective_from < b.certified_class + b.pay_id + b.effective_from ? -1 : 1));
+    return { kind: "sage_rates", fileName: baseName(fileName), tables: [t], totals: { tables: 1, rates: rates.length, skipped: 0, blank: 0 } };
+  }
   function pdfTable(lines, fileName) {
     const line = lines.find((l) => /Billable Rates\s*,/i.test(l.text));
     const place = line ? (line.text.match(/Billable Rates\s*,\s*(.+)/i) || [, ""])[1].replace(/\s+/g, " ").trim() : "";
@@ -905,7 +1122,8 @@
       if (isWageNotice(whole)) throw WAGE(fileName);
       throw NOT_SCHEDULE(fileName);
     }
-    const table = pdfTable(lines, fileName);
+    const table = pdfRoute(fileName) || pdfTable(lines, fileName);
+    if (table.staff) return staffSchedule(lines, fileName, table);
     const classRows = [];
     const dateRows = [];
     lines.forEach((line, idx) => {
@@ -925,6 +1143,7 @@
     const maxD = (Number.isFinite(lineGap) ? lineGap : 16) * 2.8;
     const rates = [];
     const seen = {};
+    let skipped = 0;
     for (const row of classRows) {
       let best = null, bestD = Infinity;
       for (const d of dateRows) {
@@ -934,8 +1153,11 @@
       if (!best || bestD > maxD) throw new C.UnknownFormat(`${baseName(fileName)}: "${row.text}" has no calendar period on that block.`);
       if (best.from > best.end) throw new C.UnknownFormat(`${baseName(fileName)}: the period ${best.from} to ${best.end} runs backwards.`);
       const from = best.from, to = C.addDays(best.end, 1);
+      if (table.keep && !table.keep(from, row.code)) { skipped++; continue; }
+      if (table.skipFrom && table.skipFrom.indexOf(from) >= 0) { skipped++; continue; }
       ["ST", "OT", "DT"].forEach((kind, ki) => {
-        for (const pay of PAY_IDS[kind]) {
+        if (table.omitCarpJdt && row.code === "#CARP-J" && kind === "DT" && (from === "2026-01-01" || from === "2028-01-01")) { skipped++; return; }
+        for (const pay of payIdsFor(kind, row.code, table.payMode)) {
           const rate = {
             rate_table_code: table.code, certified_class: row.code, pay_id: pay,
             rate_cents: row.moneys[ki], effective_from: from, effective_to: to, row_index: row.idx + 1,
@@ -955,10 +1177,12 @@
     t.classes = [...new Set(rates.map((r) => r.certified_class))].sort();
     t.latest = t.effectiveDates[t.effectiveDates.length - 1];
     t.rates.sort((a, b) => (a.certified_class + a.pay_id + a.effective_from < b.certified_class + b.pay_id + b.effective_from ? -1 : 1));
-    return { kind: "sage_rates", fileName: baseName(fileName), tables: [t], totals: { tables: 1, rates: rates.length, skipped: 0, blank: 0 } };
+    return { kind: "sage_rates", fileName: baseName(fileName), tables: [t], totals: { tables: 1, rates: rates.length, skipped, blank: 0 } };
   }
 
   async function readPdf(data, fileName = "this file") {
+    const refused = refusedFile(fileName);
+    if (refused) throw new C.NotForThisPage(refused);
     const u8 = C.toU8(data);
     if (!u8 || u8.length < 8 || latin1(u8.subarray(0, 5)) !== "%PDF-") throw NOT_SCHEDULE(fileName);
     let lines;
@@ -971,5 +1195,5 @@
     return scheduleFromLines(lines, fileName);
   }
 
-  return { looksLike, readWorkbook, read, readPdf, classCode, MARKER };
+  return { looksLike, readWorkbook, read, readPdf, classCode, refusedFile, MARKER };
 }));

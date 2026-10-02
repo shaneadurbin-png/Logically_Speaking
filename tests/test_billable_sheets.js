@@ -108,6 +108,10 @@ check("an old 'through' banner is not this layout", () => {
 check("classes the page does not know stay null", () => {
   eq(B.classCode("Tapers Local 1"), null);
   eq(B.classCode("Apprentice Helper"), null);
+  eq(B.classCode("Carpenter Apprentice"), null);
+  eq(B.classCode("Basic Laborer"), null);
+  eq(B.classCode("PROJECT MANAGER"), null);
+  eq(B.classCode("Skilled Laborer"), "#LAB-J");
   eq(B.classCode("QA/QC Technician"), "#QAQC");
   eq(B.classCode("Gen. Carpenter Foreman"), "#CARP-GF");
 });
@@ -126,6 +130,28 @@ check("classes the page does not know stay null", () => {
     ok(/not a Liberty billable rate schedule/.test(card.reason) && /next release/.test(card.reason), card.reason);
   });
 
+  const uploads = "/home/ubuntu/.cursor/projects/workspace/uploads";
+  if (fs.existsSync(uploads)) {
+    await checkAsync("Iowa #IA, Temple CCIP, and the AUS work order", async () => {
+      const iaName = "2025_2028_-IOWA_-_Laborers_Carpenters_25eb.xlsx";
+      const ia = B.read(fs.readFileSync(path.join(uploads, iaName)), iaName);
+      eq(rate(ia, "#IA", "#CARP-J", "REG", "2025-07-01").rate_cents, 9850);
+      eq(rate(ia, "#IA", "#CARP-J", "REG", "2025-07-01").effective_to, "2026-07-01");
+      eq(rate(ia, "#IA", "#CARP-J", "REG", "2026-07-01").rate_cents, 10500);
+      ok(!ia.tables[0].classes.includes("#QAQC"));
+      const temple = "Temple_CCIP_2026-2027_7784.xlsx";
+      const t = B.read(fs.readFileSync(path.join(uploads, temple)), temple);
+      eq(rate(t, "#TEMPLE-CCIP", "#CARP-J", "REG", "2026-01-01").rate_cents, 8600);
+      ok(!rate(t, "#TEMPLE-CCIP", "#CARP-J", "D/T", "2026-01-01"), "2026 #CARP-J double time is left out");
+      ok(!t.tables[0].rates.some((r) => r.certified_class === "#CARP-J" && r.rate_cents === 6650));
+      const order = "AUS_4_5_CCIP_Billable_Rates_2026_-_Work_Order_01_a27f.pdf";
+      let err = null;
+      try { await B.readPdf(fs.readFileSync(path.join(uploads, order)), order); }
+      catch (e) { err = e; }
+      ok(err instanceof C.NotForThisPage, order);
+      ok(/banner says CCIP/.test(err.message) && /5%/.test(err.message), err && err.message);
+    });
+  }
   const drop = "/tmp/rates-drop/Billable Rate Sheets";
   if (fs.existsSync(drop)) {
     await checkAsync("the real VA and MD sheets", async () => {

@@ -24,6 +24,8 @@
 
   /** bytes + name -> {kind, wb?, layout?} or a refusal that says what was looked for. */
   function sniff(data, fileName) {
+    const why = Billable.refusedFile(fileName);
+    if (why) throw new C.NotForThisPage(why);
     const family = familyOf(fileName);
     if (family === "system") return { kind: "system" };
     if (family === "zip") return { kind: "zip" };
