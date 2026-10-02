@@ -104,7 +104,7 @@ check("#/review redirects to a project, a campus, or the portfolio", () => {
 check("the page script mounts these three routes and does not dump every job on #/", () => {
   const ui = fs.readFileSync(path.join(__dirname, "../app/ui.js"), "utf8");
   ok(ui.includes("Pages.portfolio(") && ui.includes("Pages.campus(") && ui.includes("Pages.project("), "the three pages are what the router mounts");
-  ok(ui.includes("Pages.reviewScope(") && ui.includes("Pages.reviewRedirect("), "a project is scoped, and #/review redirects");
+  ok(ui.includes("Pages.reviewScope(") && ui.includes("async function reviewPage"), "a project is scoped, and #/review is the weekly cost review");
   ok(!ui.includes("jobCard("), "the old project-card column is gone");
   ok(!ui.includes("data-dive-job"), "the portfolio no longer opens one long review of every job");
 });
