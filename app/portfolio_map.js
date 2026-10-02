@@ -301,6 +301,16 @@
     return `<svg class="pf-svg" viewBox="${vb}" role="img" aria-label="United States, one dot per campus">${states}${marks}</svg>`;
   }
 
+  /** "AUS > DC4" when both are known. A blank, Other, or Unassigned campus is not named. */
+  function selectionLabel(campus, project) {
+    const proj = String(project || "").trim();
+    const camp = String(campus || "").trim();
+    const known = camp && camp !== "Other" && camp !== "Unassigned";
+    if (proj && known) return camp + " > " + proj;
+    if (proj) return proj;
+    return camp;
+  }
+
   /** Sum a v_job_month list. jobNumbers null means every row; an array limits the sum. */
   function monthScope(rows, jobNumbers) {
     const allow = jobNumbers == null ? null : new Set(jobNumbers);
@@ -320,5 +330,5 @@
     return t;
   }
 
-  return { PLACES, locate, project, compile, svg, monthScope, map: () => MAP };
+  return { PLACES, locate, project, compile, svg, monthScope, selectionLabel, map: () => MAP };
 }));

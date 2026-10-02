@@ -114,4 +114,14 @@ check("a campus filter and a project filter each change the month totals and the
   ok(byCampus.labor.cost !== whole.labor.cost && byProject.labor.cost !== whole.labor.cost, "each filter changes the review");
 });
 
+check("a campus and a project read Campus > Project", () => {
+  eq(PM.selectionLabel("AUS", "DC4"), "AUS > DC4");
+  eq(PM.selectionLabel("CDR E1", "DC4"), "CDR E1 > DC4");
+  eq(PM.selectionLabel("AUS", ""), "AUS");
+  eq(PM.selectionLabel("", "DC4"), "DC4");
+  eq(PM.selectionLabel("Other", "DC4"), "DC4");
+  eq(PM.selectionLabel("Unassigned", "Site"), "Site");
+  eq(PM.selectionLabel("  BWI ", " 110 "), "BWI > 110");
+});
+
 done();

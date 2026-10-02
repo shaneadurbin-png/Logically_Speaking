@@ -14,7 +14,7 @@
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig, PM = root.PortfolioMap;
-  const RELEASE = "0.1.8";
+  const RELEASE = "0.1.9";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -213,7 +213,8 @@
     if (projectOn) shown = shown.map((c) => Object.assign({}, c, { jobs: c.jobs.filter((j) => projectOn.includes(j.job_number)) })).filter((c) => c.jobs.length);
     const points = campuses.filter((c) => c.place).map((c) => ({ id: c.name, name: c.name, lon: c.place.lon, lat: c.place.lat, hasCost: c.hasCost, selected: !!singleCampus && c.name === singleCampus }));
     const hit = singleCampus ? campuses.find((c) => c.name === singleCampus) : null;
-    const scopeName = singleProject ? ((st.settings.jobByNumber[singleProject] || {}).short_name || singleProject) : singleCampus ? singleCampus : campusOn ? n1(campusOn.length, "campus", "campuses") : n1(campuses.length, "campus", "campuses");
+    const job = singleProject ? (st.settings.jobByNumber[singleProject] || {}) : null;
+    const scopeName = singleProject ? PM.selectionLabel(job.campus || singleCampus, job.short_name || singleProject) : singleCampus ? singleCampus : campusOn ? n1(campusOn.length, "campus", "campuses") : n1(campuses.length, "campus", "campuses");
     return html`<div class="pf">
       <div class="pf-head">
         <div class="pf-intro">
