@@ -16,7 +16,7 @@
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig, PM = root.PortfolioMap, Pages = root.Pages;
-  const RELEASE = "0.1.12";
+  const RELEASE = "0.1.13";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -448,9 +448,14 @@
     return Rev.html(model);
   }
   async function reviewPage() {
-    const dest = Pages.reviewRedirect(st.route, st.review);
-    if (location.hash !== dest) location.hash = dest;
-    return "";
+    const q = st.route.q;
+    const rev = reviewState();
+    if (q.c || q.j) applyReviewQuery(rev, q);
+    const jobs = st.settings.jobs.filter((j) => j.active !== false);
+    return raw(await buildReview({
+      jobs, week: q.w || null, tab: reviewTab(q), sort: rev.sort,
+      campuses: PM.expandCampuses(jobs, rev.campuses), projects: rev.projects,
+    }));
   }
   function wireReview() {
     const box = $(".gr-dash") || $(".wcr");
