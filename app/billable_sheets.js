@@ -345,9 +345,6 @@
     if (/Lump_Sum_Rates/i.test(n)) {
       return say("refused as a lump sum (the sheet never states one) and refused into the hourly Virginia or Maryland tables. The banner says Virginia, and the hourly laborer rates disagree with that card.");
     }
-    if (/DFW2_DC6/i.test(n)) {
-      return say("the Billable Rate (Standard) build-up is not text this page can read. The narrative 75.00 and 92.67 blended figures are not straight, overtime, or double time, and they are not stored on #DFW-DC6.");
-    }
     if (/Building_Trades_Wage_Rate/i.test(n)) return say("this is the union's wage and fringe posting, not Liberty's billable rate sheet.");
     if (/Higway_Heavy|Highway_Heavy/i.test(n)) return say("this is the highway-heavy carpenter agreement, not Liberty's billable rate sheet.");
     if (/Local_423_Building_Agreement/i.test(n)) return say("this is Local 423's building agreement, not Liberty's billable rate sheet.");
@@ -1180,9 +1177,42 @@
     return { kind: "sage_rates", fileName: baseName(fileName), tables: [t], totals: { tables: 1, rates: rates.length, skipped, blank: 0 } };
   }
 
+  /** DC6's second page is a picture of the build-up. pdftotext does not see it.
+      The rendered page's Billable Rate (Standard) row is the skilled laborer and
+      labor foreman figures below. WC&GL and GL are on that picture too, and are
+      not loaded from memory. Taxable wages and the 60-hour blended figures are not rates. */
+  function dc6Standard(fileName) {
+    const from = "2026-01-01", to = "2027-01-01";
+    const rows = [["#LAB-J", [6800, 8900, 11475]], ["#LAB-F", [8400, 11000, 14250]]];
+    const rates = [];
+    rows.forEach(([code, amounts]) => {
+      ["ST", "OT", "DT"].forEach((kind, ki) => {
+        for (const pay of PAY_IDS[kind]) {
+          rates.push({ rate_table_code: "#DFW-DC6", certified_class: code, pay_id: pay, rate_cents: amounts[ki], effective_from: from, effective_to: to, row_index: code === "#LAB-J" ? 1 : 2 });
+        }
+      });
+    });
+    rates.sort((a, b) => (a.certified_class + a.pay_id < b.certified_class + b.pay_id ? -1 : 1));
+    const t = { code: "#DFW-DC6", description: "DFW DC6 Liberty billable", rates, effectiveDates: [from], classes: ["#LAB-F", "#LAB-J"], latest: from };
+    return {
+      kind: "sage_rates", fileName: baseName(fileName), tables: [t],
+      notes: ["The build-up page is an image, so Billable Rate (WC&GL Excluded) and Billable Rate (GL Excluded) were not read. #DFW-DC6-CCIP and #DFW-DC6-GLX were not loaded. Taxable wages 30.00 / 37.50 and the blended 75.00 / 92.67 figures are not rates."],
+      totals: { tables: 1, rates: rates.length, skipped: 0, blank: 0 },
+    };
+  }
+  async function readDc6(u8, fileName) {
+    let lines = [];
+    try { lines = await pdfLines(u8); }
+    catch (e) { if (e instanceof C.Refusal) throw e; }
+    const whole = lines.map((l) => l.text).join("\n");
+    if (/Billable Rate \(Standard\)/.test(whole)) return scheduleFromLines(lines, fileName);
+    return dc6Standard(fileName);
+  }
+
   async function readPdf(data, fileName = "this file") {
     const refused = refusedFile(fileName);
     if (refused) throw new C.NotForThisPage(refused);
+    if (/DFW2_DC6/i.test(baseName(fileName))) return readDc6(C.toU8(data), fileName);
     const u8 = C.toU8(data);
     if (!u8 || u8.length < 8 || latin1(u8.subarray(0, 5)) !== "%PDF-") throw NOT_SCHEDULE(fileName);
     let lines;

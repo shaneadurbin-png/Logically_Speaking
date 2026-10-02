@@ -151,6 +151,19 @@ check("classes the page does not know stay null", () => {
       ok(err instanceof C.NotForThisPage, order);
       ok(/banner says CCIP/.test(err.message) && /5%/.test(err.message), err && err.message);
     });
+    await checkAsync("DC6 standard row is loaded and the blended figures are not", async () => {
+      const name = "DFW2_DC6_-_Liberty_Labor_Rates_ef59.pdf";
+      if (!fs.existsSync(path.join(uploads, name))) return;
+      const d = await B.readPdf(fs.readFileSync(path.join(uploads, name)), name);
+      eq(d.tables.map((t) => t.code), ["#DFW-DC6"]);
+      const j = rate(d, "#DFW-DC6", "#LAB-J", "REG", "2026-01-01");
+      const f = rate(d, "#DFW-DC6", "#LAB-F", "REG", "2026-01-01");
+      eq(j.rate_cents, 6800); eq(j.effective_to, "2027-01-01");
+      eq(f.rate_cents, 8400);
+      eq(rate(d, "#DFW-DC6", "#LAB-J", "D/T", "2026-01-01").rate_cents, 11475);
+      ok(!d.tables.some((t) => t.code === "#DFW-LIB" || t.rates.some((r) => r.rate_cents === 7500 || r.rate_cents === 9267 || r.rate_cents === 3000 || r.rate_cents === 3750)));
+      ok(d.notes.some((n) => /#DFW-DC6-CCIP and #DFW-DC6-GLX were not loaded/.test(n)), (d.notes || []).join(" | "));
+    });
   }
   const drop = "/tmp/rates-drop/Billable Rate Sheets";
   if (fs.existsSync(drop)) {

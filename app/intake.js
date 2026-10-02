@@ -108,7 +108,8 @@
       title: `Sage rate tables: ${doc.tables.map((t) => t.code).join(", ")}`, matched,
       notes: doc.tables.map((t) => `${t.code} ${t.description}: ${t.rates.length} rates, ${t.classes.length} classes, in force from ${t.effectiveDates.map(C.fmtDay).join(", ")}` +
         (matched[t.code] ? `; job ${matched[t.code].join(", ")}` : "; no job in Settings carries this number, assign it there"))
-        .concat(doc.totals.skipped ? [`${doc.totals.skipped} catch-all row${doc.totals.skipped > 1 ? "s" : ""} (class or pay ID "*", non-billable) left out`] : []),
+        .concat(doc.totals.skipped ? [`${doc.totals.skipped} catch-all row${doc.totals.skipped > 1 ? "s" : ""} (class or pay ID "*", non-billable) left out`] : [])
+        .concat(doc.notes || []),
       conservation: { rates: doc.totals.rates },
     });
   }
