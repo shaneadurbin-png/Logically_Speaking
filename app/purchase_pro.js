@@ -13,7 +13,19 @@
    committed total. Quotes (OrdType *_Quote) and cancelled orders are listed
    and left out. An order with no committed total yet is listed, counted as
    pending, and never guessed. A description that says NONBILLABLE lands in
-   the Non-Billables bucket. */
+   the Non-Billables bucket. A PO with no Job (quotes often have none) is
+   never a refusal: a quote or a cancelled order is left out as it would be
+   anyway; a counted order records with no job and waits for a decision,
+   the same way an order on a job Settings does not know waits.
+
+   Tbl_PO has no primary key. The same PO NUMBER can sit on two different
+   orders (32 numbers do, on the export of 2026-10-02: "26.01" on five), and
+   the same OrderID can sit on a quote and the order it became (7 do), and
+   one export even carried the same OrderID and number twice with different
+   details. Nothing here refuses: every row is kept, and every order whose
+   number is on more than one row is marked and waits for a decision until
+   Purchase Pro gives each its own number. A decision is about one order: it
+   carries across exports by number AND OrderID. */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory(require("./common.js"));
   else root.PurchasePro = factory(root.Common);
@@ -41,7 +53,7 @@
     (rows[hi] || []).forEach((v, j) => { const k = C.norm(v); if (k && !(k in col)) col[k] = j; });
     const at = (r, name) => { const j = col[C.norm(name)]; return j == null ? null : r[j]; };
     const pos = [], seen = new Map();
-    let committed = 0, counted = 0, cancelled = 0, quotes = 0, noAmount = 0, blank = 0;
+    let committed = 0, counted = 0, cancelled = 0, quotes = 0, noAmount = 0, blank = 0, noJob = 0, noJobCounted = 0;
     const byType = {}, byJob = {};
     for (let i = hi + 1; i < rows.length; i++) {
       const r = rows[i];
@@ -49,8 +61,9 @@
       const excelRow = i + 1;
       const po_number = C.str(at(r, "Purchase_Order"));
       if (!po_number) throw new C.UnknownFormat(`${fileName}: row ${excelRow} has no Purchase_Order.`);
-      if (seen.has(po_number)) throw new C.UnknownFormat(`${fileName}: rows ${seen.get(po_number)} and ${excelRow} both carry PO ${po_number}; one export lists each PO once.`);
-      seen.set(po_number, excelRow);
+      const order_id = C.str(at(r, "OrderID")) || null;
+      const key = `${order_id || ""}|${po_number}`;
+      seen.set(key, (seen.get(key) || 0) + 1);
       const order_date = C.parseDate(at(r, "OrdDate"));
       if (!order_date || Number.isNaN(order_date)) throw new C.UnknownFormat(`${fileName}: row ${excelRow} (PO ${po_number}): OrdDate "${C.str(at(r, "OrdDate"))}" is not a date.`);
       const typeRaw = C.str(at(r, "OrdType"));
@@ -62,9 +75,9 @@
       const description = C.oneLine(at(r, "Brief_Description_of_Work"));
       const isCancelled = isTrue(at(r, "Cancelled"));
       const po = {
-        row_index: excelRow, po_number, order_date, order_type, quote, cancelled: isCancelled,
+        row_index: excelRow, po_number, order_id, order_date, order_type, quote, cancelled: isCancelled,
         supplier_code: C.str(at(r, "Supplier")) || null, supplier_name: C.oneLine(at(r, "Supplier_Name")),
-        job_number: C.str(at(r, "Job")), description,
+        job_number: C.str(at(r, "Job")) || null, description,
         bucket: /non-?billable/i.test(description) ? "NON_BILLABLE" : BUCKET_OF[order_type],
         committed_cents: amt,
         raw: { order_id: C.str(at(r, "OrderID")) || null, company: C.str(at(r, "Cor")) || C.str(at(r, "Company")) || null, quote_ref: C.str(at(r, "Supplier_QuoteOrder")) || null,
@@ -72,23 +85,32 @@
           exported: at(r, "Exported") == null ? null : isTrue(at(r, "Exported")), comments: C.oneLine(at(r, "Comments")) || null },
       };
       for (const k of Object.keys(po.raw)) if (po.raw[k] == null || Number.isNaN(po.raw[k])) delete po.raw[k];
-      if (!po.job_number) throw new C.UnknownFormat(`${fileName}: row ${excelRow} (PO ${po_number}) has no Job.`);
+      if (!po.job_number) noJob++;
       pos.push(po);
       if (isCancelled) { cancelled++; continue; }
       if (quote) { quotes++; continue; }
       if (amt == null) { noAmount++; continue; }
       counted++; committed += amt;
       byType[order_type] = (byType[order_type] || 0) + amt;
+      if (!po.job_number) { noJobCounted++; continue; }
       const j = byJob[po.job_number] || (byJob[po.job_number] = { job_number: po.job_number, pos: 0, committed_cents: 0 });
       j.pos++; j.committed_cents += amt;
     }
     if (!pos.length) throw new C.UnknownFormat(`${fileName} has the header of a Purchase Pro export and no POs.`);
+    // a number on more than one order: each order kept, each marked, none counted until decided
+    const byNumber = new Map();
+    for (const p of pos) byNumber.set(p.po_number, (byNumber.get(p.po_number) || 0) + 1);
+    const sharedNumbers = [];
+    for (const [n, c] of byNumber) if (c > 1) sharedNumbers.push({ po_number: n, orders: c });
+    const repeatedRows = [...seen.entries()].filter(([, c]) => c > 1).map(([k, c]) => ({ order_id: k.split("|")[0] || null, po_number: k.split("|")[1], rows: c }));
+    for (const p of pos) p.shared_number = byNumber.get(p.po_number) > 1 ? byNumber.get(p.po_number) : null;
     let as_of = opts.as_of ? C.parseDate(opts.as_of) : null, asOfSource = opts.as_of ? "given" : null;
     if (!as_of) { const m = String(fileName).match(/(\d{4})[-_.](\d{1,2})[-_.](\d{1,2})|(\d{1,2})[-_.](\d{1,2})[-_.](\d{2,4})/); if (m) { const iso = m[1] ? `${m[1]}-${String(+m[2]).padStart(2, "0")}-${String(+m[3]).padStart(2, "0")}` : `${m[6].length === 2 ? "20" + m[6] : m[6]}-${String(+m[4]).padStart(2, "0")}-${String(+m[5]).padStart(2, "0")}`; const d = C.parseDate(iso); if (d && !Number.isNaN(d)) { as_of = d; asOfSource = "name"; } } }
     if (!as_of) { as_of = pos.map((p) => p.order_date).sort().pop(); asOfSource = "latest order"; }
     return {
       kind: "purchase_orders", fileName, as_of, asOfSource, pos,
-      totals: { pos: pos.length, counted, committed_cents: committed, cancelled, quotes, noAmount, blank, byType, byJob,
+      totals: { pos: pos.length, counted, committed_cents: committed, cancelled, quotes, noAmount, noJob, noJobCounted, blank, byType, byJob,
+        sharedNumbers: sharedNumbers.sort((a, b) => b.orders - a.orders || (a.po_number < b.po_number ? -1 : 1)), sharedNumberPos: sharedNumbers.reduce((t, s) => t + s.orders, 0), repeatedRows,
         jobs: Object.keys(byJob).sort(), latestOrder: pos.map((p) => p.order_date).sort().pop() },
     };
   }

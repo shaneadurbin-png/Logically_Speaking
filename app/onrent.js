@@ -51,8 +51,8 @@
     if (["n", "no", "false", "0"].includes(n)) return false;
     return NaN;
   }
-  // vendors write "-" or blank for nothing
-  const blank = (v) => v == null || (typeof v === "string" && /^\s*(-+|n\/?a)?\s*$/i.test(v));
+  // vendors write "-", "N/A" or blank for nothing; EquipmentShare's portal writes "null" and "undefined"
+  const blank = (v) => v == null || (typeof v === "string" && /^\s*(-+|n\/?a|null|undefined)?\s*$/i.test(v));
 
   function readWorkbook(wb, fileName = "this file", opts = {}) {
     const ws = wb.Sheets[wb.SheetNames[0]];

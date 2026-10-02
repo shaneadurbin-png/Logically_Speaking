@@ -30,7 +30,8 @@ Live use needs the project filled in `app/config.js` (below). Sign in with the 6
 | **Sunbelt** "Equipment on Rent - All Jobs" (`.csv`, every account in one file) | the day it ran is Date Rented + Number of Days on Rent, which every line must agree on; a line with a serial number is one unit; a bulk line (cable, deck panels) carries no quantity in this export, so it shows its rate and is not counted |
 | **Herc** "Equipment On Rent Summary" (`.xlsx`) | the as-of is the Report Date column (the name's date is not it) |
 | **EquipmentShare** rentals export (`.csv`) | only lines with status On-rent count; short dates in the name ("9.4.26") read |
-| **Purchase Pro** `Tbl_PO1` export | a snapshot of every PO: the latest export stands for all of them |
+| **EquipmentShare** "On Rent Report" (`.csv`, every job) | one line per asset; the day it ran is Rental Start Date + Total Days on Rent, which every line must agree on |
+| **Purchase Pro** `Tbl_PO1` export | a snapshot of every PO: the latest export stands for all of them; a PO with no job is left out (quotes) or waits for a decision (live orders), never refused; a PO number sitting on two different orders (Tbl_PO has no primary key) makes both wait, and a decision carries by number and OrderID |
 | Sage **Job Cost To Date** per job (`CDR_DC4_9-29-26.xlsx`) | every cost transaction on the job; the latest export per job stands for all of it; the charges that come back every month are found and offered as rentals |
 | **Sage rate table** export (the "Rate Table" report, one or many tables) | loads or refreshes each table; jobs whose number ends in the table's digits are attached to it |
 | **Projects** register (`Projects.xlsx`: Job #, Project Name, Campus, Region) | adds jobs, fills in campus and region where blank |

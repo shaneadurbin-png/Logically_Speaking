@@ -13,7 +13,7 @@
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig;
-  const RELEASE = "0.1.0";
+  const RELEASE = "0.1.1";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -144,15 +144,19 @@
   async function portfolioView(m) {
     const rows = await st.db.view("v_job_month", { month: m + "-01" });
     const by = Object.fromEntries(rows.map((r) => [r.job_number, r]));
-    const [siteRows, plexRows, dumpRows] = await Promise.all([st.db.view("v_site_services_month", { month: m + "-01" }).catch(() => []), st.db.view("v_trailer_plex_month", { month: m + "-01" }).catch(() => []), st.db.view("v_dumpster_month", { month: m + "-01" }).catch(() => [])]);
+    const [siteRows, plexRows, dumpRows, fresh] = await Promise.all([st.db.view("v_site_services_month", { month: m + "-01" }).catch(() => []), st.db.view("v_trailer_plex_month", { month: m + "-01" }).catch(() => []), st.db.view("v_dumpster_month", { month: m + "-01" }).catch(() => []), st.db.view("v_freshness").catch(() => [])]);
     const siteOf = (n) => SS.shortLabel(SS.fromViews(siteRows.filter((x) => x.job_number === n), plexRows.filter((x) => x.job_number === n)), pullsOf(dumpRows.filter((x) => x.job_number === n)));
     const groups = {};
     for (const j of st.settings.jobs.filter((j) => j.active !== false)) (groups[j.campus || "Other"] = groups[j.campus || "Other"] || []).push(j);
     const tot = rows.reduce((t, r) => ({ labor: t.labor + r.labor_cents, rent: t.rent + r.rental_cents + r.rental_lo_cents + (r.offfeed_cents || 0), purch: t.purch + r.purchase_cents, pending: t.pending + r.pending_cents, all: t.all + r.total_cents }), { labor: 0, rent: 0, purch: 0, pending: 0, all: 0 });
     const withCost = rows.filter((r) => r.total_cents).length;
+    // the month shown may simply be ahead of the time sheets: say so instead of showing a bare $0
+    const f = fresh[0] || {}, laborHours = rows.reduce((t, r) => t + (+r.labor_hours || 0), 0), heldHours = rows.reduce((t, r) => t + (+r.labor_held_hours || 0), 0);
+    const laborNote = !laborHours && f.hh2_through && C.monthOf(f.hh2_through) !== m ? `no hours in ${C.fmtMonth(m)} yet; HH2 through ${C.fmtDay(f.hh2_through)} (see ${C.fmtMonth(C.monthOf(f.hh2_through))})`
+      : laborHours ? `${hours(laborHours)} hours${heldHours ? `, ${hours(heldHours)} held` : ""}` : "";
     const pendingLines = rows.reduce((t, r) => t + (r.pending_lines || 0), 0);
     return html`<div class="row" style="justify-content:space-between"><h1>Portfolio</h1>${monthNav(m, "#/")}<span class="row noprint"><a href="#/report/all?m=${m}"><button>Report (PDF)</button></a><button id="buckets" title="one row per job, month and bucket, the shape GRforecast imports">Export for GRforecast</button></span></div>
-      <div class="tiles">${tile("total", "All jobs, this month", tot.all, `${n1(withCost, "job")} with cost`)}${tile("labor", "Labor", tot.labor)}${tile("equipment", "Rentals to client", tot.rent, "on-rent reports and confirmed recurring charges")}${tile("materials", "Purchases (material POs)", tot.purch, tot.pending ? `${money(tot.pending, true)} awaiting a decision` : "")}</div>
+      <div class="tiles">${tile("total", "All jobs, this month", tot.all, `${n1(withCost, "job")} with cost`)}${tile("labor", "Labor", tot.labor, laborNote)}${tile("equipment", "Rentals to client", tot.rent, "on-rent reports and confirmed recurring charges")}${tile("materials", "Purchases (material POs)", tot.purch, tot.pending ? `${money(tot.pending, true)} awaiting a decision` : "")}</div>
       ${pendingLines && st.db.canEdit() ? html`<p class="noprint"><a href="#/settings?tab=purchases">${n1(pendingLines, "PO awaits", "POs await")} a decision &rarr;</a></p>` : ""}
       ${Object.entries(groups).sort().map(([campus, jobs]) => html`<h2>${campus}${jobs[0].region ? html` <span class="muted small">${jobs[0].region}</span>` : ""}</h2><div class="cards">${jobs.map((j) => jobCard(j, by[j.job_number], m, siteOf(j.job_number)))}</div>`)}
       ${st.settings.jobs.length === 0 ? html`<div class="notice">No jobs yet. Drop the Projects register or an HH2 export on Update, or add them in <a href="#/settings">Settings</a>.</div>` : ""}`;
@@ -225,7 +229,7 @@
   function purchaseTable(rows, d) {
     const counted = rows.filter((r) => (r.status === "auto" || r.status === "confirmed") && r.order_type !== "Rental");
     return html`<table><tr><th>PO #</th><th>Date</th><th>Supplier</th><th>Description</th><th>Type</th><th>Bucket</th><th class="num">Committed</th><th></th></tr>
-      ${rows.slice().sort(poSort).map((r) => html`<tr class="${r.status === "needs_decision" ? "held" : ""}"><td class="mono">${r.doc_number}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="small">${r.order_type || ""}</td><td class="small">${bucketName(r.bucket)}</td><td class="num">${r.total_cents == null ? html`<span class="warn">no amount</span>` : money(r.total_cents)}</td><td>${poStatus(r)}</td></tr>${r.status === "needs_decision" && st.db.canEdit() ? html`<tr><td colspan="8">${decideForm(r, d.job.job_number)}</td></tr>` : ""}`)}
+      ${rows.slice().sort(poSort).map((r) => html`<tr class="${r.status === "needs_decision" ? "held" : ""}"><td class="mono">${r.doc_number}${r.shared_number > 1 ? html` <span class="warn small">on ${r.shared_number} orders</span>` : ""}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="small">${r.order_type || ""}</td><td class="small">${bucketName(r.bucket)}</td><td class="num">${r.total_cents == null ? html`<span class="warn">no amount</span>` : money(r.total_cents)}</td><td>${poStatus(r)}</td></tr>${r.status === "needs_decision" && st.db.canEdit() ? html`<tr><td colspan="8">${decideForm(r, d.job.job_number)}</td></tr>` : ""}`)}
       <tr class="total"><td colspan="6">Counted · ${n1(counted.length, "PO")}</td><td class="num">${money(counted.reduce((a, r) => a + (r.total_cents || 0), 0))}</td><td></td></tr></table>`;
   }
   function recurringCard(d) {
@@ -290,7 +294,7 @@
         <span class="row noprint"><a href="#/report/${n}?m=${m}"><button>Report (PDF)</button></a>${st.db.canEdit() ? html`<button id="xlsx">Export .xlsx</button>` : ""}</span></div>
       <p class="muted small">${d.job.campus ? `${d.job.campus}${d.job.region ? ` · ${d.job.region}` : ""} · ` : ""}${d.job.rate_table_code ? `rate table ${d.job.rate_table_code}${table && table.description ? ` (${table.description})` : ""}` : html`<span class="warn">no rate table: its labor is held until one is set in Settings</span>`} · rentals taxed ${pct(d.job.tax_bp == null ? 700 : d.job.tax_bp)}, markup ${pct(d.job.markup_bp == null ? 1000 : d.job.markup_bp)} on ${d.job.markup_base === "rent" ? "rent" : "rent + tax"}</p>
       ${t ? html`<div class="tiles">${tile("labor", "Labor", t.labor_cents, `${hours(t.labor_hours)} hours${t.labor_held_hours ? `, ${hours(t.labor_held_hours)} held` : ""}${t.labor_through ? ` · HH2 through ${C.fmtDay(t.labor_through)}` : ""}`)}
-        ${tile("equipment", "Rentals to client", t.rental_cents + (t.offfeed_cents || 0), `${t.rental_lines} on rent${t.rental_as_of ? ` as of ${C.fmtDay(t.rental_as_of)}` : ""}${t.rental_no_monthly ? `, ${t.rental_no_monthly} with no monthly figure` : ""}${t.offfeed_lines ? ` · ${n1(t.offfeed_lines, "recurring charge")}` : ""}`)}
+        ${tile("equipment", "Rentals to client", t.rental_cents + (t.offfeed_cents || 0), `${t.rental_lines} on rent${t.rental_as_of ? ` as of ${C.fmtDay(t.rental_as_of)}${t.rental_as_of > C.monthEnd(m) ? " (first report after the month)" : ""}` : ""}${t.rental_no_monthly ? `, ${t.rental_no_monthly} with no monthly figure` : ""}${t.offfeed_lines ? ` · ${n1(t.offfeed_lines, "recurring charge")}` : ""}`)}
         ${t.rental_lo_cents ? tile("lo", "Liberty-owned equipment", t.rental_lo_cents, "rent only") : ""}
         ${tile("materials", "Purchases (material POs)", t.purchase_cents, `${t.purchase_nb_cents ? `non-billable ${money(t.purchase_nb_cents, true)}` : ""}${t.purchase_rental_cents ? `${t.purchase_nb_cents ? " · " : ""}rental POs ${money(t.purchase_rental_cents, true)} apart` : ""}${t.pending_lines ? `${t.purchase_rental_cents || t.purchase_nb_cents ? " · " : ""}${n1(t.pending_lines, "PO")} awaiting a decision` : ""}`)}
         ${tile("total", "Total", t.total_cents)}</div>` : html`<div class="notice">Nothing recorded for ${d.job.short_name} in ${C.fmtMonth(m)}.</div>`}
@@ -552,7 +556,7 @@
       const pend = (await st.db.view("v_purchase_docs", { status: "needs_decision" }).catch(() => [])).sort(poSort);
       body = html`<p class="muted small">POs the latest Purchase Pro export could not count by itself: on a job not in Settings, or with no committed amount yet. Count one on a job, in its bucket, or leave it out with a reason. A decision is about the PO, so it holds through the next export. If the job is real, add it on the Jobs tab instead: every PO on it then counts by itself.</p>
         ${pend.length ? html`<table><tr><th>PO #</th><th>Date</th><th>Supplier</th><th>Description</th><th>Type</th><th>PO's job</th><th class="num">Committed</th></tr>
-          ${pend.map((r) => html`<tr class="held"><td class="mono">${r.doc_number}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="small">${r.order_type || ""}</td><td>${st.settings.jobByNumber[r.job_number] ? `${jobName(r.job_number)} · ${r.job_number}` : html`<span class="warn">${r.job_number || "(none)"} · not in Settings</span>`}</td><td class="num">${r.total_cents == null ? html`<span class="warn">no amount</span>` : money(r.total_cents)}</td></tr><tr><td colspan="7">${decideForm(r, "")}</td></tr>`)}</table>` : html`<p class="muted">Nothing waits for a decision.</p>`}`;
+          ${pend.map((r) => html`<tr class="held"><td class="mono">${r.doc_number}${r.shared_number > 1 ? html` <span class="warn small">on ${r.shared_number} orders</span>` : ""}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="small">${r.order_type || ""}</td><td>${st.settings.jobByNumber[r.job_number] ? `${jobName(r.job_number)} · ${r.job_number}` : html`<span class="warn">${r.job_number || "(none)"} · not in Settings</span>`}</td><td class="num">${r.total_cents == null ? html`<span class="warn">no amount</span>` : money(r.total_cents)}</td></tr><tr><td colspan="7">${decideForm(r, "")}</td></tr>`)}</table>` : html`<p class="muted">Nothing waits for a decision.</p>`}`;
     } else if (tab === "recurring") {
       const all = (await st.db.view("recurring_charges", {}, { order: "job_number" }).catch(() => [])).sort((a, b) => (a.job_number + a.start_month < b.job_number + b.start_month ? -1 : 1));
       body = html`<p class="muted small">Every charge confirmed as a monthly rental, across jobs: counted under Rentals from its first month until its last, with the job's markup. The candidates wait on each job's page, found on its Job Cost To Date.</p>

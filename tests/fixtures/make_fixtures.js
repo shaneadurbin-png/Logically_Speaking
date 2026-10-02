@@ -263,6 +263,23 @@ const esRows = [
   es({ Product: "#111376", Status: "Off-rent", Class: "Pallet Jack 4,000 - 4,500 Lb Electric", "Rental ID": 4150561, "Order ID": 7254039, "Price Per Day ($)": 147, "Price Per Week ($)": 368, "Price Per Month ($)": 735 }),
 ];
 write("onrent/EquipShare_rentals-export_9.4.26.csv", csv([ES_H].concat(esRows)));
+// EquipmentShare's other export, the On Rent Report (real header of 2026-10-02): one line per asset, no date of its own,
+// Rental Start Date + Total Days on Rent is the day it ran (2026-10-02 on every line here).
+const ESR_H = ["Asset Name", "Asset", "Rental Id", "Make & Model", "Class", "Serial/VIN", "Jobsite", "Purchase Order", "Current Asset Location", "Current Asset Location Map", "Vendor", "Ordered By", "Rental Start Date", "Scheduled Off Rent Date", "Price per Day", "Price per Week", "Price per Month", "Total Invoiced Amount", "Total Days on Rent", "Total Weekdays on Rent", "Next Cycle Date", "Billing Days Left", "Days Left In Current Cycle", "Rental Location", "Utilization Status", "Utilization 2026-10-01", "Utilization 2026-09-30", "Utilization 2026-09-29", "Utilization 2026-09-28", "Utilization 2026-09-27", "Utilization 2026-09-26", "Utilization 2026-09-25"];
+function esr(o) {
+  const r = Object.fromEntries(ESR_H.map((h) => [h, ""]));
+  Object.assign(r, { Vendor: "EQUIPMENTSHARE.COM INC", "Current Asset Location": "80215 Boardman Airport Lane, Boardman, Oregon 97818", "Rental Location": "Pasco, WA - Core Solutions", "Utilization Status": "show utilization", "Next Cycle Date": "2026-10-29", "Billing Days Left": 27, "Days Left In Current Cycle": 1, "Total Invoiced Amount": 0, "Utilization 2026-10-01": 0 }, o);
+  r["Asset Name"] = r.Asset;
+  return ESR_H.map((h) => r[h]);
+}
+const esrRows = [
+  esr({ Asset: "41950", "Rental Id": 4342082, "Make & Model": "WACKER NEUSON LTV6K-MH", Class: "Light Plant 6kW - Metal Halide", "Serial/VIN": "WNCLTV02TPUM07636", Jobsite: "PDX-204", "Purchase Order": "26-011321", "Rental Start Date": "2026-10-01 23:00:00", "Scheduled Off Rent Date": "2026-10-27 23:00:00", "Price per Day": 103, "Price per Week": 232, "Price per Month": 521, "Total Days on Rent": 1, "Total Weekdays on Rent": 1 }),
+  esr({ Asset: "9824", "Rental Id": 4342084, "Make & Model": "WACKER NEUSON LTV6K-MH", Class: "Light Plant 6kW - Metal Halide", "Serial/VIN": "WNCLTV02EPUM05222", Jobsite: "PDX-204", "Purchase Order": "26-011321", "Rental Start Date": "2026-10-01 23:00:00", "Scheduled Off Rent Date": "2026-10-29 23:00:00", "Price per Day": 103, "Price per Week": 232, "Price per Month": 521, "Total Days on Rent": 1, "Total Weekdays on Rent": 1 }),
+  esr({ Asset: "76037", "Rental Id": 2761682, "Make & Model": "POLARIS Pro XD Crew (Canopy Half Doors)", Class: "Utility Vehicle 4 - 6 Passenger Diesel, Open ROPS Half Doors", "Serial/VIN": "3018321366", Jobsite: "PDX-203", "Purchase Order": "71401520", "Rental Start Date": "2026-09-14 23:00:00", "Scheduled Off Rent Date": "2026-10-12 23:00:00", "Price per Day": 160, "Price per Week": 480, "Price per Month": 1250, "Total Invoiced Amount": 1250, "Total Days on Rent": 18, "Total Weekdays on Rent": 14, "Next Cycle Date": "2026-10-12" }),
+  esr({ Asset: "66967", "Rental Id": 2761736, "Make & Model": "GENERAC MLTS-4", Class: "Light Plant 2.4 - 4kW - LED", "Serial/VIN": "17307988", Jobsite: "Temple Texas", "Purchase Order": "71402533", "Rental Location": "Fort Worth, TX - Tooling Solutions", "Rental Start Date": "2026-09-17 14:00:00", "Scheduled Off Rent Date": "2026-10-15 14:00:00", "Price per Day": 95, "Price per Week": 215, "Price per Month": 495, "Total Days on Rent": 15, "Total Weekdays on Rent": 11 }),
+  esr({ Asset: "500771", "Rental Id": 2761791, "Make & Model": "", Class: "Cable #2 Banded 5 50' Camlock", "Serial/VIN": "500771", Jobsite: "PDX-203", "Purchase Order": "71401520", "Rental Start Date": "2026-09-30 17:00:00", "Scheduled Off Rent Date": "2026-10-28 17:00:00", "Price per Day": 0, "Price per Week": 0, "Price per Month": 0, "Total Days on Rent": 2, "Total Weekdays on Rent": 2, "Next Cycle Date": "null", "Utilization 2026-09-27": "undefined", "Utilization Status": "No tracker installed" }),
+];
+write("onrent/On Rent Report_ES.csv", csv([ESR_H].concat(esrRows)));
 const X = JSON.parse(fs.readFileSync(path.join(here, "onrent/expected.json"), "utf8"));
 Object.assign(X, {
   sunbelt: { file: "sunbelt_account_export.csv", vendor_key: "sunbelt", layout: "sunbelt", lines: 6, rent_cents: 955000, repeats: 1, noMonthly: 0,
@@ -278,6 +295,8 @@ Object.assign(X, {
     monthly: [35000, 58000, null, 0, null, null, 477500, 62000] },
   es: { file: "EquipShare_rentals-export_9.4.26.csv", vendor_key: "equipmentshare", layout: "equipmentshare", lines: 4, rent_cents: 257150, as_of: "2026-09-04", notCounted: { "Off-rent": 1 },
     equipment: ["#748680", "#742475", "500-1203", "#530093"], jobRefs: ["Cedar Rapids", "PDX-202", "PDX-203"] },
+  es_onrent: { file: "On Rent Report_ES.csv", vendor_key: "equipmentshare", layout: "equipmentshare_onrent", lines: 5, rent_cents: 278700, as_of: "2026-10-02", noMonthly: 0,
+    equipment: ["41950", "9824", "76037", "66967", "500771"], jobRefs: ["PDX-203", "PDX-204", "Temple Texas"] },
   ur_dc4: { lines: 3, rent: 353500, tax: 24745, markup: 37825, total: 416070 },
 });
 write("onrent/expected.json", JSON.stringify(X, null, 2));
@@ -313,13 +332,20 @@ const poRows = [
   po(11094, "26-011094", "2026-09-20", "Material", "500221", "Uline Shipping Supplies", DC4, "tape and bags", false, false, ""),
   po(11093, "26-011093", "2026-08-28", "Material", "500300", "Colony Hardware Supply Co Inc.", DC4, "anchors", false, true, 2000),
   po(11092, "26-011092", "2026-09-02", "Rental", "WSI001", "Williams Scotsman, Inc.", "50-63-125001", "office trailer", false, true, 3600),
+  // no Job on the PO: a quote (left out anyway) and a live order (waits for a decision); neither refuses the file
+  po(11091, "Q-26-011091", "2026-09-21", "Rental_Quote", "UNI100", "United Rentals (North America)", "", "scissor lifts, quote", false, false, ""),
+  po(11090, "26-011090", "2026-09-22", "Material", "500221", "Uline Shipping Supplies", "", "gloves, no job on the PO", false, true, 150),
+  // one PO number on two different orders (Tbl_PO has no primary key; "26.01" sits on five orders in the real export): each kept, each waits
+  po(11089, "26.01", "2026-09-23", "Rental", "UNI100", "United Rentals (North America)", DC4, "light tower, number shared", false, true, 500),
+  po(11088, "26.01", "2026-09-24", "Rental", "UNI100", "United Rentals (North America)", CAMP, "light tower, number shared too", false, true, 700),
 ];
 {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([PO_H].concat(poRows), { cellDates: true }), "Copy of Tbl_PO1");
   write("purchases/Tbl_PO1_2026-09-25.xlsx", XLSX.write(wb, { type: "buffer", bookType: "xlsx", cellDates: true }));
-  write("purchases/expected.json", JSON.stringify({ file: "Tbl_PO1_2026-09-25.xlsx", as_of: "2026-09-25", pos: 8, counted: 5, committed_cents: 2125324, cancelled: 1, quotes: 1, noAmount: 1,
-    byType: { Material: 1638246, Rental: 487078 }, jobs: [DC4, DC5, CAMP, "50-63-125001"].sort(), dc4Sep: 31250, nbDc4: 31250, dc5Sep: 1406996 }, null, 2));
+  write("purchases/expected.json", JSON.stringify({ file: "Tbl_PO1_2026-09-25.xlsx", as_of: "2026-09-25", pos: 12, counted: 8, committed_cents: 2260324, cancelled: 1, quotes: 2, noAmount: 1, noJob: 2, noJobCounted: 1,
+    sharedNumbers: [{ po_number: "26.01", orders: 2 }], sharedNumberPos: 2, latestOrder: "2026-09-24",
+    byType: { Material: 1653246, Rental: 607078 }, jobs: [DC4, DC5, CAMP, "50-63-125001"].sort(), dc4Sep: 31250, nbDc4: 31250, dc5Sep: 1406996 }, null, 2));
 }
 {
   const wb = XLSX.utils.book_new();

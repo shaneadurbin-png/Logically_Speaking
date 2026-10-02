@@ -54,6 +54,12 @@ const ctx = { labor: { rates, employees, policy: {}, jobs }, vendorSettings: {},
     ok(/worked out from Date Rented \+ Number of Days on Rent/.test(notes)); ok(/3 lines carry no quantity/.test(notes)); ok(/3 accounts in one file/.test(notes));
     ok(!/day or week rate/.test(notes), "the no-quantity lines are not called day-or-week lines");
   });
+  await checkAsync("the Purchase Pro export: ready, and the POs with no job named, not refused", async () => {
+    const c = await Intake.inspect(b("purchases/Tbl_PO1_2026-09-25.xlsx"), "Tbl_PO1_2026-09-25.xlsx", ctx);
+    eq(c.status, "ready"); ok(/12 POs/.test(c.stamp));
+    ok(c.notes.some((n) => /2 POs carry no job; 1 of them is a live order and waits for a decision/.test(n)), c.notes.join(" | "));
+    ok(c.notes.some((n) => /1 PO number is on more than one order \(26\.01 on 2\); those 2 orders wait for a decision/.test(n)), c.notes.join(" | "));
+  });
   await checkAsync("a Sage rate table export: ready, tables named, jobs matched by number", async () => {
     const c = await Intake.inspect(b("rates/Sage_Rate_Tables_2026.xlsx"), "Sage_Rate_Tables_2026.xlsx", ctx);
     eq(c.status, "ready"); eq(c.kind, "sage_rates"); eq(c.stamp, "2 rate tables, 27 rates"); eq(c.conservation, { rates: 27 });

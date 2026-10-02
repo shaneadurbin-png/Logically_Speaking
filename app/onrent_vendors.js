@@ -116,6 +116,18 @@
       as_of: { column: null, name: true }, monthly: "month_rate",
       note: "The portal's rentals export. Only On-rent rows are rentals; other statuses are counted and listed. The export does not date itself, so a date in the file name is used (EquipShare_rentals-export_9.4.26.csv) or the page asks.",
     },
+    {
+      layout: "equipmentshare_onrent", vendor_key: "equipmentshare", name: "EquipmentShare - On Rent Report (.csv)", confirmed: true,
+      confirmed_from: "On Rent Report_ES.csv of 2026-10-02 (79 assets across every job)",
+      header: { required: ["Asset", "Rental Id", "Make & Model", "Class", "Serial/VIN", "Jobsite", "Purchase Order", "Vendor", "Rental Start Date", "Scheduled Off Rent Date", "Price per Day", "Price per Week", "Price per Month", "Total Days on Rent"] },
+      columns: { equipment_no: ["Asset", "Serial/VIN"], contract_no: "Rental Id", line_ref: "Rental Id", job_ref: "Jobsite",
+        description: "Class", make: "Make & Model", serial: "Serial/VIN", on_rent_date: "Rental Start Date", est_return: "Scheduled Off Rent Date",
+        day_rate: "Price per Day", week_rate: "Price per Week", month_rate: "Price per Month", po: "Purchase Order",
+        ordered_by: "Ordered By", next_bill: "Next Cycle Date", days_on_rent: "Total Days on Rent", billed_to_date: "Total Invoiced Amount" },
+      identify: { column: "Vendor", pattern: /EQUIPMENT ?SHARE/i, says: "EquipmentShare's report names itself in its Vendor column" },
+      as_of: { column: null, derive: "rented_plus_days", name: true }, monthly: "month_rate",
+      note: "The portal's On Rent Report: every asset on rent across every job, one line each (no quantity column: a line is one asset). The report does not date itself; Rental Start Date + Total Days on Rent is the day it ran, on every line.",
+    },
     { layout: "mcw", name: "Mission Critical Warehouse (1-SL rental invoices, Liberty-owned)", confirmed: false, vendor_key: "mcw",
       note: "PDF invoices; read in the release that opens PDFs." },
   ];

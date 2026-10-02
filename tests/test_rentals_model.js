@@ -55,7 +55,12 @@ check("Liberty-owned rent is kept apart and never taxed or marked up", () => {
 });
 check("the snapshot for a month is the latest on or before its end", () => {
   const s = R.snapshotForMonth([wk1, wk2], "2026-09"); eq(s.as_of, "2026-09-26");
-  eq(R.snapshotForMonth([wk1, wk2], "2026-08"), null);
+  eq(R.snapshotForMonth([wk1, wk2], "2026-08"), null, "a report 19 days into the next month says nothing about August");
+  const oct2 = Object.assign({}, wk2, { as_of: "2026-10-02" }), oct9 = Object.assign({}, wk2, { as_of: "2026-10-09" }), oct2b = Object.assign({}, wk2, { as_of: "2026-10-02", fileName: "later" });
+  eq(R.snapshotForMonth([oct2], "2026-09") === oct2, true, "a month with no report by its end takes the first report after it, within a week");
+  eq(R.snapshotForMonth([oct9], "2026-09"), null, "nine days after is too late");
+  eq(R.snapshotForMonth([oct2, oct2b], "2026-09") === oct2b, true, "two reports as of that same day: the one recorded last stands");
+  eq(R.snapshotForMonth([wk2, oct2], "2026-09") === wk2, true, "a report by the month's end still wins over one after it");
   eq(R.snapshotForMonth([wk1, wk2], "2026-10").as_of, "2026-09-26");
   const wk2b = Object.assign({}, wk2, { fileName: "sunbelt_2026-09-26_later.csv" });
   eq(R.snapshotForMonth([wk1, wk2, wk2b], "2026-09") === wk2b, true, "two reports as of the same day: the one recorded last stands");

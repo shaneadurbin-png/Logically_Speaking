@@ -131,6 +131,19 @@ check("EquipmentShare: only On-rent rows count; the rest are counted by status",
   eq(es.lines[2].qty, 8); eq(es.lines[2].monthly_rent_cents, 22400); eq(es.lines[3].month_rate_cents, 78150); eq(es.lines[3].raw.shift, "Double");
   eq(es.lines[0].contract_no, "7364017"); eq(es.lines[0].line_ref, "4229608"); eq(es.lines[0].po, "26-010424"); eq(es.lines[0].on_rent_date, "2026-08-05"); eq(es.lines[0].raw.next_bill, "2026-09-02");
 });
+// ---- EquipmentShare's On Rent Report ----------------------------------------------------
+const esr = OnRent.read(bytes(X.es_onrent.file), X.es_onrent.file);
+check("EquipmentShare On Rent Report: its own layout, the vendor by its Vendor column, the day from Rental Start Date + Total Days on Rent", () => {
+  eq(esr.layout, X.es_onrent.layout); eq(esr.vendor_key, X.es_onrent.vendor_key); eq(esr.as_of, X.es_onrent.as_of); eq(esr.asOfSource, "derived");
+  eq(esr.totals.lines, X.es_onrent.lines); eq(esr.totals.rent_cents, X.es_onrent.rent_cents); eq(esr.totals.noMonthly, X.es_onrent.noMonthly); eq(esr.totals.jobRefs, X.es_onrent.jobRefs);
+  eq(esr.lines.map((l) => l.equipment_no), X.es_onrent.equipment); eq(esr.lines.every((l) => l.qty === 1), true);
+});
+check("EquipmentShare On Rent Report: the asset's fields, a timestamped start date, the $0 cable at $0", () => {
+  const a = esr.lines[2]; eq(a.contract_no, "2761682"); eq(a.line_ref, "2761682"); eq(a.vendor_job_ref, "PDX-203"); eq(a.po, "71401520"); eq(a.description, "Utility Vehicle 4 - 6 Passenger Diesel, Open ROPS Half Doors");
+  eq(a.on_rent_date, "2026-09-14"); eq(a.est_return, "2026-10-12"); eq(a.monthly_rent_cents, 125000); eq(a.raw.days_on_rent, 18); eq(a.raw.billed_to_date_cents, 125000); eq(a.raw.serial, "3018321366"); eq(a.raw.make, "POLARIS Pro XD Crew (Canopy Half Doors)"); eq(a.raw.next_bill, "2026-10-12");
+  eq(esr.lines[4].monthly_rent_cents, 0); eq(esr.lines[4].raw.qty_unknown, undefined, "a line is one asset here, nothing unknown");
+  eq(esr.lines[4].raw.next_bill, undefined, "the portal's literal \"null\" is an empty cell, not a date");
+});
 check("asOfFromName: two-digit years only as a last resort, never from a version-like number", () => {
   eq(OnRent.asOfFromName("EquipShare_rentals-export_9.4.26.csv"), "2026-09-04");
   eq(OnRent.asOfFromName("rentals-export.csv"), null);
@@ -146,8 +159,8 @@ check("asks: generic with no as-of anywhere", () => {
   ok(e instanceof C.NeedsDecision); eq(e.need, "as_of");
 });
 check("refuses: a rate period it does not know", () => refuses(() => OnRent.read(bytes("bad/bad_period_2026-09-26.csv"), "bad_period_2026-09-26.csv"), /Rate Period "Fortnightly"/));
-check("registry: six confirmed layouts, one awaiting; every confirmed one says what it was confirmed from", () => {
-  eq(V.confirmed().map((l) => l.layout), ["generic", "sunbelt", "sunbelt_all_jobs", "herc", "united_rentals", "equipmentshare"]);
+check("registry: seven confirmed layouts, one awaiting; every confirmed one says what it was confirmed from", () => {
+  eq(V.confirmed().map((l) => l.layout), ["generic", "sunbelt", "sunbelt_all_jobs", "herc", "united_rentals", "equipmentshare", "equipmentshare_onrent"]);
   eq(V.awaiting().map((l) => l.layout), ["mcw"]);
   ok(V.confirmed().every((l) => l.confirmed_from));
   eq(V.vendorFromName("UNITED RENTALS").vendor_key, "united_rentals"); eq(V.vendorFromName("T3").vendor_key, "equipmentshare"); eq(V.vendorFromName("SNB").vendor_key, "sunbelt");

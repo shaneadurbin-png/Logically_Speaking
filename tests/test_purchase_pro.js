@@ -22,17 +22,38 @@ check("NONBILLABLE in the description lands in Non-Billables; a quote and a canc
   eq(doc.pos.find((x) => x.po_number === "26-011097").cancelled, true);
   eq(doc.pos.find((x) => x.po_number === "26-011094").committed_cents, null, "no amount yet stays null");
 });
+check("a PO with no job is never a refusal: a quote is left out as it would be, a live order waits", () => {
+  eq(doc.totals.noJob, X.noJob); eq(doc.totals.noJobCounted, X.noJobCounted);
+  const q = doc.pos.find((x) => x.po_number === "Q-26-011091"); eq(q.job_number, null); eq(q.quote, true);
+  const p = doc.pos.find((x) => x.po_number === "26-011090"); eq(p.job_number, null); eq(p.committed_cents, 15000); eq(p.order_type, "Material");
+  ok(!doc.totals.jobs.includes(null) && !("null" in doc.totals.byJob) && !("" in doc.totals.byJob), "no job is not a job");
+  eq(doc.totals.counted, X.counted, "the live order without a job still counts in the export's total; the database holds it for a decision");
+});
+check("one PO number on two orders: both kept, both marked; the identity is OrderID + number", () => {
+  const XLSX = require("../app/vendor/xlsx.full.min.js");
+  const wb = XLSX.read(fs.readFileSync(path.join(F, "purchases", X.file)), { type: "buffer" });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: null });
+  const q = rows[1].slice(); q[rows[0].indexOf("Purchase_Order")] = "Q-" + q[rows[0].indexOf("Purchase_Order")]; q[rows[0].indexOf("OrdType")] = "Material_Quote"; rows.push(q);
+  const wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, XLSX.utils.aoa_to_sheet(rows), "S");
+  const d = PO.read(XLSX.write(wb2, { type: "buffer", bookType: "xlsx" }), "quote_and_order.xlsx");
+  eq(d.totals.pos, X.pos + 1, "a quote and the order it became share an OrderID and both read");
+  eq(doc.totals.sharedNumbers, X.sharedNumbers); eq(doc.totals.sharedNumberPos, X.sharedNumberPos);
+  const two = doc.pos.filter((x) => x.po_number === "26.01"); eq(two.length, 2); eq(two.map((x) => x.shared_number), [2, 2]); eq(two.map((x) => x.order_id), ["11089", "11088"]);
+  eq(doc.pos.find((x) => x.po_number === "26-011095").shared_number, null); eq(doc.pos.find((x) => x.po_number === "26-011095").order_id, "11095");
+});
 check("without a date in the name, the latest order date stands in and says so", () => {
   const d = PO.read(fs.readFileSync(path.join(F, "purchases", X.file)), "Tbl_PO1.xlsx");
-  eq(d.as_of, "2026-09-20"); eq(d.asOfSource, "latest order");
+  eq(d.as_of, X.latestOrder); eq(d.asOfSource, "latest order");
   eq(PO.read(fs.readFileSync(path.join(F, "purchases", X.file)), "Tbl_PO1.xlsx", { as_of: "2026-10-01" }).asOfSource, "given");
 });
-check("refuses a repeated PO and a foreign layout", () => {
+check("a row repeated in the export is kept twice and both copies wait; a foreign layout refuses", () => {
   const XLSX = require("../app/vendor/xlsx.full.min.js");
   const wb = XLSX.read(fs.readFileSync(path.join(F, "purchases", X.file)), { type: "buffer" });
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: null }); rows.push(rows[1].slice());
   const wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, XLSX.utils.aoa_to_sheet(rows), "S");
-  refuses(() => PO.read(XLSX.write(wb2, { type: "buffer", bookType: "xlsx" }), "dup.xlsx"), /both carry PO 26-011099/);
+  const d = PO.read(XLSX.write(wb2, { type: "buffer", bookType: "xlsx" }), "dup.xlsx");
+  eq(d.totals.pos, X.pos + 1); eq(d.totals.repeatedRows, [{ order_id: "11099", po_number: "26-011099", rows: 2 }]);
+  eq(d.pos.filter((p) => p.po_number === "26-011099").map((p) => p.shared_number), [2, 2], "both copies are marked, so both wait");
   refuses(() => PO.read(fs.readFileSync(path.join(F, "onrent/sunbelt_2026-09-19.csv")), "x.csv"), /not a Purchase Pro PO export/);
 });
 check("the Projects register: jobs, repeats dropped, campuses counted", () => {

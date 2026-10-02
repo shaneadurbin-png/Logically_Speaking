@@ -117,7 +117,10 @@
           (t.cancelled ? `; ${t.cancelled} cancelled` : "") + (t.quotes ? `; ${t.quotes} quote${t.quotes > 1 ? "s" : ""}` : "") + (t.noAmount ? `; ${t.noAmount} with no committed amount yet (pending)` : ""),
         doc.asOfSource === "latest order" ? `as-of taken as the latest order date, ${C.fmtDay(doc.as_of)}; put the export date in the file name to say otherwise` : `as-of ${C.fmtDay(doc.as_of)} (${doc.asOfSource})`,
         `the whole export stands for every PO: recording it replaces the last PO export on file`,
-      ].concat(unknown.length ? [`${unknown.length} job${unknown.length > 1 ? "s" : ""} in the POs ${unknown.length > 1 ? "are" : "is"} not in Settings (${unknown.slice(0, 5).join(", ")}${unknown.length > 5 ? ", ..." : ""}); their POs wait for a decision`] : []),
+      ].concat(unknown.length ? [`${unknown.length} job${unknown.length > 1 ? "s" : ""} in the POs ${unknown.length > 1 ? "are" : "is"} not in Settings (${unknown.slice(0, 5).join(", ")}${unknown.length > 5 ? ", ..." : ""}); their POs wait for a decision`] : [],
+        t.noJob ? [`${t.noJob} PO${t.noJob > 1 ? "s carry" : " carries"} no job${t.noJobCounted ? `; ${t.noJobCounted} of them ${t.noJobCounted > 1 ? "are" : "is"} a live order and waits for a decision` : " (quotes and cancelled orders, left out anyway)"}`] : [],
+        t.sharedNumbers && t.sharedNumbers.length ? [`${t.sharedNumbers.length} PO number${t.sharedNumbers.length > 1 ? "s are" : " is"} on more than one order (${t.sharedNumbers.slice(0, 3).map((s) => `${s.po_number} on ${s.orders}`).join(", ")}${t.sharedNumbers.length > 3 ? ", ..." : ""}); those ${t.sharedNumberPos} orders wait for a decision until each has its own number in Purchase Pro`] : [],
+        t.repeatedRows && t.repeatedRows.length ? [`${t.repeatedRows.length} order${t.repeatedRows.length > 1 ? "s appear" : " appears"} twice in the export with different details (${t.repeatedRows.slice(0, 2).map((x) => `${x.order_id ? `OrderID ${x.order_id}, ` : ""}PO ${x.po_number}`).join("; ")}); both rows are kept and wait for a decision`] : []),
       conservation: { pos: t.pos, committed_cents: t.committed_cents },
     });
   }

@@ -58,13 +58,20 @@
     return { added, kept, dropped };
   }
 
+  // a month with no report by its last day takes the first report after it, if it comes within this many days
+  const GRACE_DAYS = 7;
   /** The snapshot that stands for a month: the latest as_of on or before the
-      month's last day. null when none is. */
+      month's last day; failing that, the first one after it within GRACE_DAYS
+      (the weekly package is pulled a day or two into the next month, and that
+      report is the best word on what was on rent at month end). null when none. */
   function snapshotForMonth(snapshots, ym) {
     const end = C.monthEnd(ym);
     let best = null;
     // snapshots arrive in the order they were recorded: of two as of the same day, the one recorded last stands
     for (const s of snapshots || []) if (s.as_of <= end && (!best || s.as_of >= best.as_of)) best = s;
+    if (best) return best;
+    const grace = C.addDays(end, GRACE_DAYS);
+    for (const s of snapshots || []) if (s.as_of > end && s.as_of <= grace && (!best || s.as_of <= best.as_of)) best = s;
     return best;
   }
 
@@ -113,5 +120,5 @@
       noMonthly: rows.filter((r) => r.monthly_rent_cents == null).length };
   }
 
-  return { DEFAULT_SETTINGS, identity, settingsFor, cost, diff, snapshotForMonth, monthCost, statement };
+  return { DEFAULT_SETTINGS, GRACE_DAYS, identity, settingsFor, cost, diff, snapshotForMonth, monthCost, statement };
 }));
