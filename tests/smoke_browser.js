@@ -38,7 +38,8 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   await shot("01-portfolio-empty");
 
   await nav("#/review?m=2026-09");
-  check((await page.evaluate(() => location.hash)).startsWith("#/?"), "review with nothing selected returns to the portfolio");
+  check((await page.evaluate(() => location.hash)).startsWith("#/review"), "review stays on the weekly cost review");
+  check((await text(".gr-dash")).includes("Weekly Labor Burn"), "the copied dashboard opens on #/review");
   await nav("#/p/50-60-225121?m=2026-09");
   check((await text(".gr-dash")).includes("GR Weekly Cost Review"), "weekly review opens on one project");
   check((await text("#kpiLaborCost")) === "$0.00", "empty labor burn is zero");
