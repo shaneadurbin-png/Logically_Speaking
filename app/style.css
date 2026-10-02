@@ -78,8 +78,13 @@ details summary { cursor: pointer; color: var(--muted); }
 }
 
 /* Weekly cost review: the Liberty dashboard markup (week ending 9/20/26), scoped so the portfolio keeps its own theme. */
-body:has(.gr-dash) { background: #E4E4E4; background-image: none; }
+body:has(.gr-dash) { background: #E4E4E4; background-image: none; color: #1B1B1B; }
 body:has(.gr-dash) #app > main { max-width: none; margin: 0; padding: 0; }
+body:has(.gr-dash) .pf-title { color: #081E3E; }
+body:has(.gr-dash) .pf-sub { color: #5A5A5A; }
+body:has(.gr-dash) .pf > p a,
+body:has(.gr-dash) .pf-months,
+body:has(.gr-dash) .pf-months a { color: #081E3E; }
 .gr-dash.app { min-height: calc(100vh - 58px); }
 .gr-dash a.tab, .gr-dash a.tab:hover { text-decoration: none; }
 .gr-dash h1, .gr-dash h2, .gr-dash h3 { font-family: inherit; text-transform: none; letter-spacing: .2px; }
@@ -241,7 +246,7 @@ body:has(.pf) main { max-width: 1280px; }
 .pf-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #8b97a6; margin-right: 6px; vertical-align: 0; }
 .pf-legend i.cost { background: var(--pf-green); box-shadow: 0 0 0 3px rgba(58, 208, 122, .22); }
 .pf-legend .note { color: var(--faint); }
-.pf-side { position: relative; min-width: 0; min-height: 640px; }
+.pf-side { position: relative; min-width: 0; min-height: 780px; }
 .pf-side-in { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; }
 .pf-side-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 14px 14px 6px; }
 .pf-side-title { font-size: 16px; font-weight: 650; }
