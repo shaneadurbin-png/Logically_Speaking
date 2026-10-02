@@ -9,10 +9,10 @@
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
     module.exports = factory(require("./common.js"), require("./sniff.js"), require("./hh2.js"), require("./onrent.js"),
-      require("./labor_model.js"), require("./rentals_model.js"), require("./sage_rates.js"), require("./purchase_pro.js"), require("./projects.js"),
+      require("./labor_model.js"), require("./rentals_model.js"), require("./sage_rates.js"), require("./billable_sheets.js"), require("./purchase_pro.js"), require("./projects.js"),
       require("./jctd.js"), require("./recurring_model.js"), require("./onrent_vendors.js"), require("./site_services.js"));
-  } else root.Intake = factory(root.Common, root.Sniff, root.HH2, root.OnRent, root.LaborModel, root.RentalsModel, root.SageRates, root.PurchasePro, root.Projects, root.JCTD, root.RecurringModel, root.OnRentVendors, root.SiteServices);
-}(typeof self !== "undefined" ? self : this, function (C, Sniff, HH2, OnRent, L, R, Sage, PO, Projects, JCTD, Rec, V, SS) {
+  } else root.Intake = factory(root.Common, root.Sniff, root.HH2, root.OnRent, root.LaborModel, root.RentalsModel, root.SageRates, root.BillableSheets, root.PurchasePro, root.Projects, root.JCTD, root.RecurringModel, root.OnRentVendors, root.SiteServices);
+}(typeof self !== "undefined" ? self : this, function (C, Sniff, HH2, OnRent, L, R, Sage, Billable, PO, Projects, JCTD, Rec, V, SS) {
   "use strict";
 
   // ---- the zip: read from its directory, inflate only what is asked for -----
@@ -216,6 +216,8 @@
       }
       if (s.kind === "hh2_labor") hh2Card(card, HH2.readWorkbook(s.wb, card.name), ctx);
       else if (s.kind === "sage_rates") sageCard(card, Sage.readWorkbook(s.wb, card.name), ctx);
+      else if (s.kind === "billable_rates") sageCard(card, Billable.readWorkbook(s.wb, card.name), ctx);
+      else if (s.kind === "pdf") sageCard(card, await Billable.readPdf(bytes, card.name), ctx);
       else if (s.kind === "purchase_orders") poCard(card, PO.readWorkbook(s.wb, card.name, { as_of: ctx.asOf && ctx.asOf[fileName] }), ctx);
       else if (s.kind === "projects") projectsCard(card, Projects.readWorkbook(s.wb, card.name), ctx);
       else if (s.kind === "jctd") jctdCard(card, JCTD.readWorkbook(s.wb, card.name, { as_of: ctx.asOf && ctx.asOf[fileName] }), ctx);

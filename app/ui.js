@@ -3,7 +3,7 @@
    File names, vendor job labels, notes and names all come from outside.
 
    Pages (hash routes):
-     #/                 Portfolio - every job this month, grouped by campus
+     #/                 Portfolio - the map, this month's cost by campus, then the jobs
      #/job/<n>?m=       Job - the tiles, labor by class and code, rentals, purchases, held
      #/report/<n>?m=    Report - print it, choose Save as PDF (#/report/all for every job)
      #/review?tab=      Weekly cost review - labor, rentals, committed POs (tab=labor|rental|po&w=week)
@@ -14,7 +14,7 @@
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig;
-  const RELEASE = "0.1.4";
+  const RELEASE = "0.1.5";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -501,7 +501,7 @@
 
   // ---- Update ---------------------------------------------------------------------------------------------
   function updateView() {
-    return html`<h1>Update</h1><p class="muted">Drop the HH2 Labor Detail export, the vendors' on-rent reports (United Rentals, Sunbelt, Herc, EquipmentShare, or the page's own CSV), the Purchase Pro PO export, each job's Job Cost To Date, a Sage rate table export, or the Projects register. A zip or a folder is fine; each file is read by what is in it, not its name. Nothing is saved until you press Record.</p>
+    return html`<h1>Update</h1><p class="muted">Drop the HH2 Labor Detail export, the vendors' on-rent reports (United Rentals, Sunbelt, Herc, EquipmentShare, or the page's own CSV), the Purchase Pro PO export, each job's Job Cost To Date, a Sage rate table export or a Liberty billable rate sheet (xlsx or the billable PDF), or the Projects register. A zip or a folder is fine; each file is read by what is in it, not its name. Nothing is saved until you press Record.</p>
       <div class="drop" id="drop"><div><b>Drop files here</b>, or <label><button type="button" id="pick">choose files</button><input id="files" type="file" multiple></label> or <label><button type="button" id="pickdir">a folder</button><input id="dir" type="file" webkitdirectory multiple></label></div></div>
       <div id="cards">${cardsView()}</div>`;
   }

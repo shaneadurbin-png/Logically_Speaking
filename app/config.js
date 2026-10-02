@@ -15,7 +15,7 @@
   var q = (typeof location !== "undefined" && location.search) || "";
   var env = /[?&]env=local\b/.test(q) ? "local" : "prod";
   var cfg = {
-    RELEASE: "0.1.4",
+    RELEASE: "0.1.5",
     SUPABASE_URL: "",
     SUPABASE_PUBLISHABLE_KEY: "",
     env: env,
