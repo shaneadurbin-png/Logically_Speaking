@@ -119,7 +119,9 @@ check("the page is the three-tab review, and an empty workspace still renders", 
   ok(page.includes("On-rent snapshot as of"), "the rental note is the copied dashboard");
   ok(page.includes('class="grid g-labor"'), "labor uses the dashboard grid");
   eq(m.week, "2026-09-20");
-  ok(page.includes("Select all") && page.includes(">only<"), "the copied slicers stay");
+  ok(!page.includes("Select all"), "no select-all control");
+  ok(!/data-project|data-only-project|type="checkbox"/.test(page), "no project checkbox list");
+  ok(!page.includes(">only<"), "no only links");
   ok(page.includes("Campus:") && page.includes("Project Name:"), "the copied summary stays");
   const one = Rev.build({ jobs, today: "2026-10-02", week: "2026-09-20", projects: ["50-60-225121"] });
   const onePage = Rev.html(one);

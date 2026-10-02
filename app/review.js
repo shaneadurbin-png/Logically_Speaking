@@ -258,19 +258,6 @@
   }
 
 
-  function dd(kind, label, items, allOn) {
-    let rows = "", last = null;
-    const list = kind === "project" ? items.slice().sort((a, b) => String(a.campus).localeCompare(String(b.campus)) || String(a.name).localeCompare(String(b.name), undefined, { numeric: true })) : items;
-    for (const it of list) {
-      if (kind === "project" && it.campus !== last) { rows += `<div class="dd-hd">${esc(it.campus)}</div>`; last = it.campus; }
-      rows += kind === "campus"
-        ? `<label class="dd-item"><input type="checkbox" data-campus value="${esc(it.name)}" ${it.on ? "checked" : ""}><span class="lbl">${esc(it.name)}</span><button type="button" class="only" data-only-campus="${esc(it.name)}" title="Select only this item">only</button></label>`
-        : `<label class="dd-item"><input type="checkbox" data-project value="${esc(it.job_number)}" ${it.on ? "checked" : ""}><span class="lbl">${esc(it.name)}<span class="tag">${esc(it.campus)}</span></span><button type="button" class="only" data-only-project="${esc(it.job_number)}" title="Select only this item">only</button></label>`;
-    }
-    const allAttr = kind === "campus" ? "data-campus-all" : "data-project-all";
-    const id = kind === "campus" ? "ddCampus" : "ddProject";
-    return `<div class="dd" id="${id}"><button class="dd-btn" type="button" aria-haspopup="listbox"><span class="val">${esc(label)}</span><span class="caret"></span></button><div class="dd-pop" role="listbox" aria-multiselectable="true"><label class="dd-item all"><input type="checkbox" ${allAttr} ${allOn ? "checked" : ""}><span class="lbl">Select all</span></label>${rows || `<div class="empty">None</div>`}</div></div>`;
-  }
   function si(sort, key) { return sort.key === key ? `<span class="si ${sort.dir}"></span>` : ""; }
   function th(tab, key, label, num, width, sort) {
     return `<th class="${num ? "num" : ""}" data-sort="${tab}:${key}" title="Sort by ${esc(label)}">${esc(label)}${si(sort, key)}</th>`;
@@ -435,8 +422,6 @@
     const m = model;
     const updated = fmtMDY(m.updated || m.today);
     const scope = scopeLabel(m);
-    const projLabel = scope || (m.projectAll ? "All" : `${(m.projects || []).filter((p) => p.on).length} selected`);
-    const campLabel = m.campusAll ? "All" : (m.campuses.filter((c) => c.on).length === 1 ? m.campuses.find((c) => c.on).name : `${m.campuses.filter((c) => c.on).length} selected`);
     const weeks = m.weeks.slice().sort().reverse();
     return `<div class="app gr-dash">
       <header class="hdr">
@@ -452,17 +437,10 @@
         </nav>
       </header>
       <div class="slicers" id="slicers">
-        <div class="sl">
-          <label>Campus, Project Name</label>
-          <div class="sl-row">${dd("campus", campLabel, m.campuses, m.campusAll)}${dd("project", projLabel, m.projects, m.projectAll)}</div>
-        </div>
+        ${scope ? `<div class="sl"><label>Campus, Project Name</label><div class="sl-row"><span>${esc(scope)}</span></div></div>` : ""}
         <div class="sl">
           <label for="selWeek">Week Ending</label>
           <div class="sl-row"><select class="wk" id="selWeek">${weeks.map((w) => `<option value="${w}" ${w === m.week ? "selected" : ""}>${esc(fmtMDY(w))}</option>`).join("")}</select></div>
-        </div>
-        <div class="sl">
-          <label>&nbsp;</label>
-          <div class="sl-row"><button class="btn" id="btnClear" type="button">Clear</button></div>
         </div>
         <div class="fsum" id="fsum">Campus: <b>${esc(m.campusLabel)}</b> · Project Name: <b>${esc(m.projectLabel)}</b> · Week Ending: <b>${esc(fmtMDY(m.week))}</b>${scope ? ` · <b>${esc(scope)}</b>` : ""}</div>
       </div>
