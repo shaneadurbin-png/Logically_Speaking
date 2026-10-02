@@ -27,14 +27,16 @@
 
   /* One job, one month.
      d = { job: {job_number, short_name, name}, month: "2026-09",
-           labor: { summary, rows (priced) }, rentals: [statement...], purchases: [{vendor, doc_number, doc_date, description, cost_code, bucket, amount_cents, status}] } */
+           labor: { summary, rows (priced) }, rentals: [statement...], purchases: [{vendor, doc_number, doc_date, description, cost_code, bucket, amount_cents, status, order_type}],
+           recurring: [{vendor_name, description, units, rent_cents, tax_cents, markup_cents, total_cents, start_month, end_month, liberty_owned}] } */
   function jobMonth(d) {
     const wb = XLSX.utils.book_new();
     const title = `${d.job.short_name || d.job.job_number} - ${C.fmtMonth(d.month)}`;
     const lab = d.labor && d.labor.summary;
     const rentTotal = (d.rentals || []).reduce((t, s) => t + s.total.total, 0);
     const rentLO = (d.rentals || []).reduce((t, s) => t + s.total.liberty_owned, 0);
-    const purch = (d.purchases || []).filter((p) => p.status !== "excluded").reduce((t, p) => t + p.amount_cents, 0);
+    const purch = (d.purchases || []).filter((p) => p.status !== "excluded" && p.order_type !== "Rental").reduce((t, p) => t + p.amount_cents, 0);
+    const recur = (d.recurring || []).reduce((t, r) => t + r.total_cents, 0);
     const laborCost = lab ? lab.costCents : 0;
     const summary = [
       [title], [`Job ${d.job.job_number}${d.job.name ? " - " + d.job.name : ""}`], [`Exported ${C.fmtDay(C.todayIso())}`], [],
@@ -42,8 +44,9 @@
       ["Labor", $(laborCost), lab ? `${C.fmtHours(lab.hoursX100)} hours priced${lab.held.rows ? `; ${C.fmtHours(lab.held.hoursX100)} hours held` : ""}` : "no HH2 on file"],
       ["Rentals (to client)", $(rentTotal), (d.rentals || []).length ? `rent + tax + markup, ${(d.rentals || []).map((s) => `${s.vendor_key} as of ${C.fmtDay(s.as_of)}`).join("; ")}` : "no on-rent report on file"],
       ["Liberty-owned equipment", $(rentLO), "rent only"],
-      ["Purchases", $(purch), `${(d.purchases || []).length} documents`],
-      ["Total", $(laborCost + rentTotal + rentLO + purch), ""],
+      ["Recurring rentals", $(recur), (d.recurring || []).length ? `${(d.recurring || []).length} charges confirmed from the Job Cost To Date, with markup` : "none confirmed"],
+      ["Purchases (material POs)", $(purch), `${(d.purchases || []).length} documents`],
+      ["Total", $(laborCost + rentTotal + rentLO + recur + purch), ""],
     ];
     XLSX.utils.book_append_sheet(wb, sheet(summary, { widths: [28, 16, 60], fmt: { 1: money } }), "Summary");
 
@@ -82,6 +85,12 @@
         for (const l of st.offRent) rows.push([l.equipment_no, l.contract_no, l.description, null, l.last_seen, l.off_rent_date]);
       }
       XLSX.utils.book_append_sheet(wb, sheet(rows, { widths: [12, 12, 30, 5, 12, 8, 10, 12, 10, 10, 12, 8], fmt: { 6: money, 7: money, 8: money, 9: money, 10: money } }), safeName(`Rentals ${st.vendor_key}`));
+    }
+    if ((d.recurring || []).length) {
+      const rr = [["Vendor", "Line", "Units", "A month", "Tax", "Markup", "Total", "From", "Until", "Liberty-owned"]]
+        .concat(d.recurring.map((r) => [r.vendor_name, r.description, r.units, $(r.rent_cents), $(r.tax_cents), $(r.markup_cents), $(r.total_cents), String(r.start_month).slice(0, 7), r.end_month ? String(r.end_month).slice(0, 7) : "open", r.liberty_owned ? "Y" : ""]));
+      rr.push(["Total", "", null, $(d.recurring.reduce((t, r) => t + r.rent_cents, 0)), $(d.recurring.reduce((t, r) => t + r.tax_cents, 0)), $(d.recurring.reduce((t, r) => t + r.markup_cents, 0)), $(recur), "", "", ""]);
+      XLSX.utils.book_append_sheet(wb, sheet(rr, { widths: [28, 30, 6, 12, 10, 10, 12, 9, 9, 8], fmt: { 3: money, 4: money, 5: money, 6: money } }), "Recurring rentals");
     }
     const p = [["Vendor", "Document", "Date", "Description", "Cost code", "Bucket", "Amount", "Status"]]
       .concat((d.purchases || []).map((x) => [x.vendor || "", x.doc_number || "", x.doc_date || "", x.description || "", x.cost_code || "", x.bucket || "", $(x.amount_cents), x.status]));

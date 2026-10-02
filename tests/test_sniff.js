@@ -18,7 +18,7 @@ check("on-rent CSV and xlsx sniff as onrent with the layout", () => {
 });
 check("a Sage rate table export sniffs as sage_rates", () => eq(S.sniff(b("rates/Sage_Rate_Tables_2026.xlsx"), "Sage_Rate_Tables_2026.xlsx").kind, "sage_rates"));
 check("a workbook of no known kind is refused, saying what was looked for", () =>
-  refuses(() => S.sniff(b("hh2/bad/renamed_sheet.xlsx"), "renamed_sheet.xlsx"), /not HH2's Labor Detail export .* not a Sage rate table export, not a Purchase Pro PO export, not a Projects register, and not an on-rent report .* Its sheets: Sheet1/));
+  refuses(() => S.sniff(b("hh2/bad/renamed_sheet.xlsx"), "renamed_sheet.xlsx"), /not HH2's Labor Detail export .* not a Sage rate table export, not a Purchase Pro PO export, not a Job Cost To Date export, not a Projects register, and not an on-rent report .* Its sheets: Sheet1/));
 check("PDFs and other files are refused with the reason", () => {
   refuses(() => S.sniff(Buffer.from("%PDF-1.4"), "req.pdf"), /next release/);
   refuses(() => S.sniff(Buffer.from("hi"), "notes.txt"), /not a workbook/);

@@ -296,6 +296,74 @@ const poRows = [
   write("projects/Projects.xlsx", XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
 }
 
+// ---- Sage's Job Cost To Date export (real headers and spellings, made-up rows) ---
+const JCTD_H = ["Job", "Job Description", "Extra", "Cost Code", "Description", "Cat", "Transaction Type", "Period End Date", "Transaction Date", "Accounting Date", "Date Stamp", "Units", "Unit Cost", "Amount", "Pay ID", "PR Tax ID", "Fringe ID", "Employee", "JC_EE_UNION_ID", "JC_EE_UNION_LOC", "JC_EE_UNION_CLASS", "Batch", "Vendor", "Name", "Invoice", "Standard Item", "Description"];
+const pad = (v) => (v == null || v === "" ? "   " : String(v) + "   ");
+const stampOf = (d) => { const x = C.addDays(d, 7); return `${+x.slice(5, 7)}-${x.slice(8, 10)}-${x.slice(0, 4)}`; };
+// one transaction: cat, type, date, amount, {code, codeName, vendor, name, inv, desc, units, pay, emp, pe}
+const jrow = (cat, tt, td, amt, o = {}) => [pad(DC4), pad("CDR1 East DC4"), pad(""), pad(o.code || "01-02-0001"), pad(o.codeName || "Construction Materials DC4"), pad(cat), pad(tt),
+  pad(o.pe || ""), pad(td), pad(C.addDays(td, 9)), pad(stampOf(td)), o.units == null ? 1 : o.units, o.uc == null ? 0 : o.uc, amt, pad(o.pay || ""), pad(""), pad(""), pad(o.emp || ""), pad(""), pad(""), pad(""),
+  pad(o.batch || "88441"), pad(o.vendor || ""), pad(o.name || ""), pad(o.inv || ""), pad(""), pad(o.desc || "")];
+const SUN = { vendor: "SUN050", name: "Sunbelt Rentals" }, UNI = { vendor: "UNI100", name: "United Rentals (North America)" }, MOB = { vendor: "MOB200", name: "Mobile Air & Power Rentals" },
+  ALT = { vendor: "ALT100", name: "Altorfer Inc" }, AMP = { vendor: "AMP100", name: "Amphibious Medics" }, WES = { vendor: "WES100", name: "Westdale Hotel2, LLC" },
+  ULI = { vendor: "ULI100", name: "Uline Shipping Supplies" }, BAD = { vendor: "BAD100", name: "Badger Daylighting Corp" }, STA = { vendor: "STA100", name: "Star Equipment Ltd." }, GRA = { vendor: "GRA100", name: "Grainger Inc." };
+const jctdRows = [];
+// payroll: the Description is the employee's name; it must leave the row
+jctdRows.push(jrow("LBR", "PR cost", "2026-09-01", 254.56, { code: "01-01-0001", codeName: "General Labor/Clean-Up DC4", units: 8, uc: 31.82, pay: "UNION REG", emp: "FB5001", desc: "Lopez; Maria", pe: "2026-09-06" }));
+jctdRows.push(jrow("LBR", "PR cost", "2026-09-02", 254.56, { code: "01-01-0001", codeName: "General Labor/Clean-Up DC4", units: 8, uc: 31.82, pay: "UNION REG", emp: "FB5001", desc: "Lopez; Maria", pe: "2026-09-06" }));
+jctdRows.push(jrow("LBR", "PR cost", "2026-09-01", 312, { code: "01-02-0001", units: 8, uc: 39, pay: "UNION REG", emp: "FB8001", desc: "Okafor; Chidi", pe: "2026-09-06" }));
+jctdRows.push(jrow("PRT", "PR cost", "2026-09-01", 61.2, { code: "01-02-0001", units: 0, uc: 0, pay: "", emp: "FB8001", desc: "Okafor; Chidi", pe: "2026-09-06" }));
+// Sunbelt, a cycle-billed frame: on a feed
+[["2026-06-08", "178804573-0007"], ["2026-07-06", "178804573-0008"], ["2026-08-03", "178804573-0009"]].forEach(([d, inv]) => jctdRows.push(jrow("EQU", "AP cost", d, 6023.03, Object.assign({ code: "01-28-0001", codeName: "Scaffold DC4", inv, desc: "Rental Frame" }, SUN))));
+// United Rentals, four modular sections a month, and a generator: on a feed
+[["2026-07-01", "252427417-020"], ["2026-08-01", "252427417-021"], ["2026-09-01", "252427417-022"]].forEach(([d, inv]) => { for (let k = 0; k < 4; k++) jctdRows.push(jrow("EQU", "AP cost", d, 3023.12, Object.assign({ code: "01-06-0001", codeName: "Office Trailers DC4", inv, desc: "MODULAR BLDG FAST MIDDLE" }, UNI))); });
+[["2026-06-03", "259208337-001"], ["2026-07-03", "259208337-002"], ["2026-08-03", "259208337-003"]].forEach(([d, inv]) => jctdRows.push(jrow("EQU", "AP cost", d, 7538, Object.assign({ code: "01-99-0074", codeName: "CE#74 Temp Power DC4", inv, desc: "GENERATOR 400-499 KVA" }, UNI))));
+// Mobile Air: a contract minimum every month, no feed
+[["2026-07-29", "218084"], ["2026-08-19", "221281"]].forEach(([d, inv]) => jctdRows.push(jrow("EQU", "AP cost", d, 493463.94, Object.assign({ code: "01-99-0074", codeName: "CE#74 Temp Power DC4", inv, desc: "CONTRACT MIN5097539" }, MOB))));
+// Altorfer: a generator from the dealer, with a reversal pair on the first invoice (nets to one charge), then two more months
+jctdRows.push(jrow("EQU", "AP cost", "2026-02-26", 29117.38, Object.assign({ code: "01-30-0048", codeName: "CE#48 Generators", inv: "C6452302", desc: "26-004809" }, ALT)));
+jctdRows.push(jrow("EQU", "AP cost", "2026-02-26", -29117.38, Object.assign({ code: "01-30-0048", codeName: "CE#48 Generators", inv: "C6452302", desc: "(Rev)26-004809" }, ALT)));
+jctdRows.push(jrow("EQU", "AP cost", "2026-02-26", 29117.38, Object.assign({ code: "01-30-0048", codeName: "CE#48 Generators", inv: "C6452302", desc: "26-004809" }, ALT)));
+jctdRows.push(jrow("EQU", "AP cost", "2026-03-27", 29117.38, Object.assign({ code: "01-30-0048", codeName: "CE#48 Generators", inv: "C6452303", desc: "26-004809" }, ALT)));
+jctdRows.push(jrow("EQU", "AP cost", "2026-04-28", 29117.38, Object.assign({ code: "01-30-0048", codeName: "CE#48 Generators", inv: "C6452304", desc: "26-004809" }, ALT)));
+// Liberty's own two Polaris, charged to the job monthly (IV cost, no vendor)
+[["2026-07-17", "06/29-07/26"], ["2026-08-17", "07/27-08/23"], ["2026-09-17", "08/24-09/20"]].forEach(([d, span]) => { for (let k = 0; k < 2; k++) jctdRows.push(jrow("EQU", "IV cost", d, 1850, { code: "01-13-0001", codeName: "UTV Rentals DC4", desc: "POLARIS RANGER C~1M" + span })); });
+// recurring but not equipment: medics (SUB), lodging (OTH); not candidates
+jctdRows.push(jrow("SUB", "AP cost", "2026-07-16", 24284.42, Object.assign({ code: "01-14-0001", codeName: "Site Medic DC4", inv: "27822", desc: "CDR DC4 6/1-6/30/26" }, AMP)));
+jctdRows.push(jrow("SUB", "AP cost", "2026-08-18", 27928.71, Object.assign({ code: "01-14-0001", codeName: "Site Medic DC4", inv: "27961", desc: "CDR DC4 7/1-7/31/26" }, AMP)));
+jctdRows.push(jrow("OTH", "AP cost", "2026-07-28", 5703, Object.assign({ code: "01-05-0010", codeName: "Per Diem / Lodging", inv: "1785256148", desc: "CDR" }, WES)));
+jctdRows.push(jrow("OTH", "AP cost", "2026-08-28", 5703, Object.assign({ code: "01-05-0010", codeName: "Per Diem / Lodging", inv: "1787954374", desc: "CDR" }, WES)));
+// one-offs, a gap of two months, and three of one thing in a month: not candidates
+jctdRows.push(jrow("MAT", "AP cost", "2026-08-13", 228.4, Object.assign({ inv: "211931338", desc: "Freight" }, ULI)));
+jctdRows.push(jrow("MAT", "AP cost", "2026-08-25", 609.9, Object.assign({ inv: "212406108", desc: "Clean Mat" }, ULI)));
+jctdRows.push(jrow("EQU", "AP cost", "2026-07-22", 7639.27, Object.assign({ code: "01-99-0075", codeName: "CE#75 Hydrovac", inv: "3085896", desc: "26-006760" }, BAD)));
+jctdRows.push(jrow("EQU", "AP cost", "2026-01-14", 11299.2, Object.assign({ code: "01-99-0075", codeName: "CE#75 Hydrovac", inv: "02566691", desc: "26-004846" }, STA)));
+jctdRows.push(jrow("EQU", "AP cost", "2026-04-14", 11299.2, Object.assign({ code: "01-99-0075", codeName: "CE#75 Hydrovac", inv: "02567100", desc: "26-004846" }, STA)));
+["9042632183", "9042632184", "9042632185"].forEach((inv) => jctdRows.push(jrow("EQU", "AP cost", "2026-08-13", 28.78, Object.assign({ inv, desc: "Saw Blade" }, GRA))));
+jctdRows.push(jrow("EQU", "AP cost", "2026-09-14", 28.78, Object.assign({ inv: "9050000001", desc: "Saw Blade" }, GRA)));
+// a journal entry: ignored by the detector, kept by the reader
+jctdRows.push(jrow("OTH", "JC cost", "2025-10-01", 1866.89, { units: 0, batch: "83352", desc: "Amex SEP2025" }));
+{
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([JCTD_H].concat(jctdRows)), "Sheet1");
+  write("jctd/CDR_DC4_9-29-26.xlsx", XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+  const sum = jctdRows.reduce((t, r) => t + Math.round(r[13] * 100), 0);
+  const byType = {}; for (const r of jctdRows) { const k = r[6].trim(); byType[k] = (byType[k] || 0) + 1; }
+  write("jctd/expected.json", JSON.stringify({ file: "CDR_DC4_9-29-26.xlsx", job: DC4, rows: jctdRows.length, amount_cents: sum, byType, negatives: 1, as_of: "2026-09-29", range: { start: "2025-10-01", end: "2026-09-17" },
+    employees: { FB5001: "Lopez; Maria", FB8001: "Okafor; Chidi" }, latestStamp: stampOf("2026-09-17"),
+    // the candidates the detector MUST find, largest monthly first: [vendor_name, amount_cents, units, months, on_feed, liberty_owned, current]
+    candidates: [
+      ["Mobile Air & Power Rentals", 49346394, 1, ["2026-07", "2026-08"], false, false, true],
+      ["Altorfer Inc", 2911738, 1, ["2026-02", "2026-03", "2026-04"], false, false, false],
+      ["United Rentals (North America)", 302312, 4, ["2026-07", "2026-08", "2026-09"], true, false, true],
+      ["United Rentals (North America)", 753800, 1, ["2026-06", "2026-07", "2026-08"], true, false, true],
+      ["Sunbelt Rentals", 602303, 1, ["2026-06", "2026-07", "2026-08"], true, false, true],
+      ["Liberty-owned (internal)", 185000, 2, ["2026-07", "2026-08", "2026-09"], false, true, true],
+    ],
+    notCandidates: ["Amphibious Medics", "Westdale Hotel2, LLC", "Uline Shipping Supplies", "Badger Daylighting Corp", "Star Equipment Ltd.", "Grainger Inc."],
+    summary: { total: 6, off_feed: 3, on_feed: 3, off_feed_monthly_cents: 49716394, on_feed_monthly_cents: 1209248 + 753800 + 602303, current: 5, liberty_owned: 1 } }, null, 2));
+}
+
 // ---- a zip of a drop: one STORED entry, one DEFLATED, a system file, a folder ---
 const zlib = require("zlib");
 function zipOf(entries) {

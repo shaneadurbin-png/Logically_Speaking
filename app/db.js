@@ -114,12 +114,26 @@
         progress(1);
         return { status: "recorded", upload: fin };
       }
+      if (doc.kind === "jctd") {
+        const b = await self.rpc("begin_upload", { p_workspace: self.ws, p_kind: "jctd", p_sha256: card.sha256, p_file_name: card.name, p_byte_size: card.size,
+          p_meta: { period: doc.range, as_of: doc.as_of, summary: { job_number: doc.job_number, rows: doc.totals.rows, amount_cents: doc.totals.amount_cents }, storage_path } });
+        if (b.existing) return { status: "existing", existing: b };
+        const rows = doc.rows;
+        for (let i = 0; i < rows.length; i += BATCH) { await self.rpc("append_jctd_lines", { p_upload: b.upload_id, p_rows: rows.slice(i, i + BATCH) }); progress(Math.min(1, (i + BATCH) / rows.length) * 0.9); }
+        const fin = await self.rpc("finalize_upload", { p_upload: b.upload_id, p_expect: { rows: doc.totals.rows, amount_cents: doc.totals.amount_cents } });
+        // payroll names go where HH2's go: the employees table, editors only
+        const emp = Object.entries(doc.employees).map(([employee_number, name]) => ({ employee_number, name }));
+        for (let i = 0; i < emp.length; i += BATCH) await sb.from("employees").upsert(emp.slice(i, i + BATCH).map((r) => Object.assign({ workspace_id: self.ws }, r)), { onConflict: "workspace_id,employee_number", ignoreDuplicates: true });
+        progress(1);
+        return { status: "recorded", upload: fin, candidates: (card.candidates || []).length };
+      }
       if (doc.kind === "projects") {
         const b = await self.rpc("begin_upload", { p_workspace: self.ws, p_kind: "projects", p_sha256: card.sha256, p_file_name: card.name, p_byte_size: card.size, p_meta: { summary: { jobs: doc.totals.jobs }, storage_path } });
         if (b.existing) return { status: "existing", existing: b };
         const have = must(await sb.from("jobs").select("job_number, campus, region, name").eq("workspace_id", self.ws));
         const byNo = Object.fromEntries(have.map((j) => [j.job_number, j]));
-        const fresh = doc.jobs.filter((j) => !byNo[j.job_number]).map((j) => ({ workspace_id: self.ws, job_number: j.job_number, short_name: j.short_name, name: j.name, campus: j.campus, region: j.region }));
+        const fresh = doc.jobs.filter((j) => !byNo[j.job_number]).map((j) => Object.assign({ workspace_id: self.ws, job_number: j.job_number, short_name: j.short_name, name: j.name, campus: j.campus, region: j.region },
+          root.Projects.taxFor(j.campus) != null ? { tax_bp: root.Projects.taxFor(j.campus) } : {}));
         if (fresh.length) must(await sb.from("jobs").insert(fresh));
         for (const j of doc.jobs) { const h = byNo[j.job_number]; if (h && ((!h.campus && j.campus) || (!h.region && j.region))) must(await sb.from("jobs").update({ campus: h.campus || j.campus, region: h.region || j.region }).match({ workspace_id: self.ws, job_number: j.job_number })); }
         const fin = await self.rpc("finalize_upload", { p_upload: b.upload_id, p_expect: {} });

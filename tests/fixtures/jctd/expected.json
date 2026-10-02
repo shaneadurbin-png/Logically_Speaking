@@ -1,0 +1,119 @@
+{
+  "file": "CDR_DC4_9-29-26.xlsx",
+  "job": "50-60-225121",
+  "rows": 49,
+  "amount_cents": 125989998,
+  "byType": {
+    "PR cost": 4,
+    "AP cost": 38,
+    "IV cost": 6,
+    "JC cost": 1
+  },
+  "negatives": 1,
+  "as_of": "2026-09-29",
+  "range": {
+    "start": "2025-10-01",
+    "end": "2026-09-17"
+  },
+  "employees": {
+    "FB5001": "Lopez; Maria",
+    "FB8001": "Okafor; Chidi"
+  },
+  "latestStamp": "9-24-2026",
+  "candidates": [
+    [
+      "Mobile Air & Power Rentals",
+      49346394,
+      1,
+      [
+        "2026-07",
+        "2026-08"
+      ],
+      false,
+      false,
+      true
+    ],
+    [
+      "Altorfer Inc",
+      2911738,
+      1,
+      [
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ],
+      false,
+      false,
+      false
+    ],
+    [
+      "United Rentals (North America)",
+      302312,
+      4,
+      [
+        "2026-07",
+        "2026-08",
+        "2026-09"
+      ],
+      true,
+      false,
+      true
+    ],
+    [
+      "United Rentals (North America)",
+      753800,
+      1,
+      [
+        "2026-06",
+        "2026-07",
+        "2026-08"
+      ],
+      true,
+      false,
+      true
+    ],
+    [
+      "Sunbelt Rentals",
+      602303,
+      1,
+      [
+        "2026-06",
+        "2026-07",
+        "2026-08"
+      ],
+      true,
+      false,
+      true
+    ],
+    [
+      "Liberty-owned (internal)",
+      185000,
+      2,
+      [
+        "2026-07",
+        "2026-08",
+        "2026-09"
+      ],
+      false,
+      true,
+      true
+    ]
+  ],
+  "notCandidates": [
+    "Amphibious Medics",
+    "Westdale Hotel2, LLC",
+    "Uline Shipping Supplies",
+    "Badger Daylighting Corp",
+    "Star Equipment Ltd.",
+    "Grainger Inc."
+  ],
+  "summary": {
+    "total": 6,
+    "off_feed": 3,
+    "on_feed": 3,
+    "off_feed_monthly_cents": 49716394,
+    "on_feed_monthly_cents": 2565351,
+    "current": 5,
+    "liberty_owned": 1
+  }
+}

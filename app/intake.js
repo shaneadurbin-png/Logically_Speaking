@@ -9,9 +9,10 @@
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
     module.exports = factory(require("./common.js"), require("./sniff.js"), require("./hh2.js"), require("./onrent.js"),
-      require("./labor_model.js"), require("./rentals_model.js"), require("./sage_rates.js"), require("./purchase_pro.js"), require("./projects.js"));
-  } else root.Intake = factory(root.Common, root.Sniff, root.HH2, root.OnRent, root.LaborModel, root.RentalsModel, root.SageRates, root.PurchasePro, root.Projects);
-}(typeof self !== "undefined" ? self : this, function (C, Sniff, HH2, OnRent, L, R, Sage, PO, Projects) {
+      require("./labor_model.js"), require("./rentals_model.js"), require("./sage_rates.js"), require("./purchase_pro.js"), require("./projects.js"),
+      require("./jctd.js"), require("./recurring_model.js"), require("./onrent_vendors.js"));
+  } else root.Intake = factory(root.Common, root.Sniff, root.HH2, root.OnRent, root.LaborModel, root.RentalsModel, root.SageRates, root.PurchasePro, root.Projects, root.JCTD, root.RecurringModel, root.OnRentVendors);
+}(typeof self !== "undefined" ? self : this, function (C, Sniff, HH2, OnRent, L, R, Sage, PO, Projects, JCTD, Rec, V) {
   "use strict";
 
   // ---- the zip: read from its directory, inflate only what is asked for -----
@@ -131,6 +132,28 @@
       conservation: { jobs: doc.totals.jobs },
     });
   }
+  function jctdCard(card, doc, ctx) {
+    const jobs = (ctx.labor && ctx.labor.jobs) || [];
+    const job = jobs.find((j) => j.job_number === doc.job_number);
+    const cands = Rec.candidates(doc.rows, { onFeed: (name) => !!V.vendorFromText(name) });
+    const sm = Rec.summary(cands);
+    const t = doc.totals;
+    Object.assign(card, {
+      status: "ready", doc, candidates: cands, period: doc.range,
+      title: `Job Cost To Date, ${job ? job.short_name : doc.job_number} through ${C.fmtDay(doc.range.end)}`,
+      stamp: `${C.fmtInt(t.rows)} rows, ${C.fmtMoney(t.amount_cents)}; ${sm.total} recurring charge${sm.total === 1 ? "" : "s"} (${sm.off_feed} off feed)`,
+      notes: [
+        Object.entries(t.byType).map(([k, v]) => `${k.replace(" cost", "").toLowerCase()} ${C.fmtInt(v.rows)} rows ${C.fmtMoney(v.amount_cents)}`).join(", "),
+        sm.off_feed ? `off feed, this month: ${C.fmtMoney(sm.off_feed_monthly_cents)} a month in ${sm.off_feed} recurring charge${sm.off_feed === 1 ? "" : "s"}${sm.liberty_owned ? ` (${sm.liberty_owned} Liberty-owned)` : ""}; confirm them as monthly rentals on the job page` : "no recurring charge off the on-rent feeds",
+        sm.on_feed ? `${sm.on_feed} recurring charge${sm.on_feed === 1 ? "" : "s"} from vendors on a feed, ${C.fmtMoney(sm.on_feed_monthly_cents)} a month: shown against the reports, never counted twice` : "",
+        `as-of ${C.fmtDay(doc.as_of)} (${doc.asOfSource === "name" ? "from the name" : doc.asOfSource === "stamp" ? "the latest Date Stamp" : doc.asOfSource}); the latest export per job stands for all of its history`,
+      ].filter(Boolean).concat(
+        doc.jobs.length > 1 ? [`${doc.jobs.length} jobs in one file (${doc.jobs.join(", ")}); the first is taken as the file's job`] : [],
+        !job ? [`job ${doc.job_number} is not in Settings: its lines record, its recurring charges show once the job is added`] : [],
+        t.negatives ? [`${t.negatives} credit or reversal row${t.negatives > 1 ? "s" : ""} kept and netted`] : []),
+      conservation: { rows: t.rows, amount_cents: t.amount_cents },
+    });
+  }
   function onrentCard(card, doc, ctx) {
     const jm = (ctx.jobMap && ctx.jobMap[doc.vendor_key]) || {};
     const byJob = R.monthCost(doc, ctx.vendorSettings || {}, jm);
@@ -182,6 +205,7 @@
       else if (s.kind === "sage_rates") sageCard(card, Sage.readWorkbook(s.wb, card.name), ctx);
       else if (s.kind === "purchase_orders") poCard(card, PO.readWorkbook(s.wb, card.name, { as_of: ctx.asOf && ctx.asOf[fileName] }), ctx);
       else if (s.kind === "projects") projectsCard(card, Projects.readWorkbook(s.wb, card.name), ctx);
+      else if (s.kind === "jctd") jctdCard(card, JCTD.readWorkbook(s.wb, card.name, { as_of: ctx.asOf && ctx.asOf[fileName] }), ctx);
       else if (s.kind === "onrent") onrentCard(card, OnRent.readWorkbook(s.wb, card.name, { as_of: ctx.asOf && ctx.asOf[fileName] }), ctx);
       else throw new C.NotForThisPage(`${fileName}: a kind this page does not record (${s.kind}).`);
     } catch (e) {

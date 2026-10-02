@@ -6,9 +6,9 @@
    from a zip; which layout it is comes from its contents. */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
-    module.exports = factory(require("./common.js"), require("./hh2.js"), require("./onrent_vendors.js"), require("./sage_rates.js"), require("./purchase_pro.js"), require("./projects.js"));
-  } else root.Sniff = factory(root.Common, root.HH2, root.OnRentVendors, root.SageRates, root.PurchasePro, root.Projects);
-}(typeof self !== "undefined" ? self : this, function (C, HH2, V, Sage, PO, Projects) {
+    module.exports = factory(require("./common.js"), require("./hh2.js"), require("./onrent_vendors.js"), require("./sage_rates.js"), require("./purchase_pro.js"), require("./projects.js"), require("./jctd.js"));
+  } else root.Sniff = factory(root.Common, root.HH2, root.OnRentVendors, root.SageRates, root.PurchasePro, root.Projects, root.JCTD);
+}(typeof self !== "undefined" ? self : this, function (C, HH2, V, Sage, PO, Projects, JCTD) {
   "use strict";
 
   /** From the name alone: what family of file. */
@@ -37,12 +37,13 @@
     if (HH2.looksLike(wb)) return { kind: "hh2_labor", wb };
     if (Sage.looksLike(wb)) return { kind: "sage_rates", wb };
     if (PO.looksLike(wb)) return { kind: "purchase_orders", wb };
+    if (JCTD.looksLike(wb)) return { kind: "jctd", wb };
     if (Projects.looksLike(wb)) return { kind: "projects", wb };
     const first = C.rowsOf(wb.Sheets[wb.SheetNames[0]], 25);
     const m = V.match(first);
     if (m) return { kind: "onrent", wb, layout: m.layout.layout };
     throw new C.NotForThisPage(`${fileName} is not a layout this page reads: not HH2's Labor Detail export (sheet "${HH2.SHEET}"), ` +
-      `not a Sage rate table export, not a Purchase Pro PO export, not a Projects register, and not an on-rent report (${V.LAYOUTS.filter((l) => l.confirmed).map((l) => l.name).join(", ")}). ` +
+      `not a Sage rate table export, not a Purchase Pro PO export, not a Job Cost To Date export, not a Projects register, and not an on-rent report (${V.LAYOUTS.filter((l) => l.confirmed).map((l) => l.name).join(", ")}). ` +
       `Its sheets: ${wb.SheetNames.slice(0, 6).join(", ")}.`);
   }
 

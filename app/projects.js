@@ -41,5 +41,14 @@
     return { kind: "projects", fileName, jobs, totals: { jobs: jobs.length, repeated: dup, blank, campuses } };
   }
   const read = (data, fileName) => readWorkbook(C.readBook(data), fileName);
-  return { REQUIRED, looksLike, readWorkbook, read };
+  // the sales tax on rentals at each campus, as the weekly cost workbook carried it; a job's tax_bp starts here and is edited in Settings
+  const CAMPUS_TAX_BP = { "CDR E1": 700, "CDR": 700, "PHL": 600, "BWI": 600, "SBN": 0, "DFW2": 825, "DFW": 825, "AUS": 825 };
+  function taxFor(campus) {
+    const c = String(campus || "").trim().toUpperCase();
+    if (!c) return null;
+    if (c in CAMPUS_TAX_BP) return CAMPUS_TAX_BP[c];
+    const head = c.split(/[\s-]/)[0];
+    return head in CAMPUS_TAX_BP ? CAMPUS_TAX_BP[head] : null;
+  }
+  return { REQUIRED, CAMPUS_TAX_BP, taxFor, looksLike, readWorkbook, read };
 }));

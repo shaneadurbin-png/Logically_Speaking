@@ -116,7 +116,16 @@
     if (!n) return null;
     for (const v of VENDORS) if (v.aliases.includes(n) || slug(n) === v.vendor_key) return { vendor_key: v.vendor_key, name: v.name, known: true, liberty_owned: !!v.liberty_owned, taxable: v.taxable };
     return { vendor_key: slug(name), name: C.oneLine(name), known: false, liberty_owned: false, taxable: true };
+  }  /** a vendor name as another system spells it ("United Rentals (North America)") -> the feed vendor, or null */
+  function vendorFromText(text) {
+    const n = String(text || "").toLowerCase();
+    if (!n) return null;
+    const exact = vendorFromName(text); if (exact && exact.known) return exact;
+    // the same rule app.recurring_candidates applies in SQL: the text contains the vendor's name as Settings spells it
+    for (const v of VENDORS) if (n.includes(v.name.toLowerCase())) return { vendor_key: v.vendor_key, name: v.name, known: true, liberty_owned: !!v.liberty_owned, taxable: v.taxable };
+    return null;
   }
+
   const vendorName = (key) => { const v = VENDORS.find((x) => x.vendor_key === key); return v ? v.name : key; };
   const layoutOf = (key) => LAYOUTS.find((l) => l.layout === key) || null;
 
@@ -146,5 +155,5 @@
   const confirmed = () => LAYOUTS.filter((l) => l.confirmed);
   const awaiting = () => LAYOUTS.filter((l) => !l.confirmed);
 
-  return { LAYOUTS, VENDORS, GENERIC_COLUMNS, vendorFromName, vendorName, layoutOf, locate, match, confirmed, awaiting };
+  return { LAYOUTS, VENDORS, GENERIC_COLUMNS, vendorFromName, vendorFromText, vendorName, layoutOf, locate, match, confirmed, awaiting };
 }));

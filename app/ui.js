@@ -132,6 +132,7 @@
       ${chip(age(f.hh2_through), f.hh2_through ? `HH2 through ${C.fmtDay(f.hh2_through)}` : "No HH2 yet", "labor")}
       ${Object.keys(on).length ? Object.entries(on).map(([k, d]) => chip(age(d), `${vendorName(k)} ${C.fmtDay(d)}`, "on-rent report")) : chip("none", "No on-rent report yet")}
       ${chip(age(f.po_as_of), f.po_as_of ? `POs as of ${C.fmtDay(f.po_as_of)}` : "No PO export yet", "Purchase Pro export")}
+      ${chip(age(f.jctd_through), f.jctd_through ? `JCTD through ${C.fmtDay(f.jctd_through)}${f.jctd_jobs ? ` · ${f.jctd_jobs} job${f.jctd_jobs === 1 ? "" : "s"}` : ""}` : "No JCTD yet", "Job Cost To Date")}
       ${st.db.mode === "demo" ? chip("demo", "Demo: nothing is saved") : html`<span class="chip">${st.user ? st.user.email : ""} · ${st.db.role}</span>`}
     </header>`;
   }
@@ -144,11 +145,11 @@
     const by = Object.fromEntries(rows.map((r) => [r.job_number, r]));
     const groups = {};
     for (const j of st.settings.jobs.filter((j) => j.active !== false)) (groups[j.campus || "Other"] = groups[j.campus || "Other"] || []).push(j);
-    const tot = rows.reduce((t, r) => ({ labor: t.labor + r.labor_cents, rent: t.rent + r.rental_cents + r.rental_lo_cents, purch: t.purch + r.purchase_cents, pending: t.pending + r.pending_cents, all: t.all + r.total_cents }), { labor: 0, rent: 0, purch: 0, pending: 0, all: 0 });
+    const tot = rows.reduce((t, r) => ({ labor: t.labor + r.labor_cents, rent: t.rent + r.rental_cents + r.rental_lo_cents + (r.offfeed_cents || 0), purch: t.purch + r.purchase_cents, pending: t.pending + r.pending_cents, all: t.all + r.total_cents }), { labor: 0, rent: 0, purch: 0, pending: 0, all: 0 });
     const withCost = rows.filter((r) => r.total_cents).length;
     const pendingLines = rows.reduce((t, r) => t + (r.pending_lines || 0), 0);
     return html`<div class="row" style="justify-content:space-between"><h1>Portfolio</h1>${monthNav(m, "#/")}<span class="row noprint"><a href="#/report/all?m=${m}"><button>Report (PDF)</button></a><button id="buckets" title="one row per job, month and bucket, the shape GRforecast imports">Export for GRforecast</button></span></div>
-      <div class="tiles">${tile("total", "All jobs, this month", tot.all, `${n1(withCost, "job")} with cost`)}${tile("labor", "Labor", tot.labor)}${tile("equipment", "Rentals to client", tot.rent)}${tile("materials", "Purchases (POs)", tot.purch, tot.pending ? `${money(tot.pending, true)} awaiting a decision` : "")}</div>
+      <div class="tiles">${tile("total", "All jobs, this month", tot.all, `${n1(withCost, "job")} with cost`)}${tile("labor", "Labor", tot.labor)}${tile("equipment", "Rentals to client", tot.rent, "on-rent reports and confirmed recurring charges")}${tile("materials", "Purchases (material POs)", tot.purch, tot.pending ? `${money(tot.pending, true)} awaiting a decision` : "")}</div>
       ${pendingLines && st.db.canEdit() ? html`<p class="noprint"><a href="#/settings?tab=purchases">${n1(pendingLines, "PO awaits", "POs await")} a decision &rarr;</a></p>` : ""}
       ${Object.entries(groups).sort().map(([campus, jobs]) => html`<h2>${campus}${jobs[0].region ? html` <span class="muted small">${jobs[0].region}</span>` : ""}</h2><div class="cards">${jobs.map((j) => jobCard(j, by[j.job_number], m))}</div>`)}
       ${st.settings.jobs.length === 0 ? html`<div class="notice">No jobs yet. Drop the Projects register or an HH2 export on Update, or add them in <a href="#/settings">Settings</a>.</div>` : ""}`;
@@ -158,7 +159,7 @@
     if (!r || !r.total_cents && !r.labor_held_hours && !r.pending_lines) return html`<div class="card"><h3><a href="#/job/${j.job_number}?m=${m}">${j.short_name}</a> <span class="muted small">${j.job_number}</span></h3><p class="muted">Nothing recorded for ${C.fmtMonth(m)}.</p></div>`;
     return html`<div class="card"><h3><a href="#/job/${j.job_number}?m=${m}">${j.short_name}</a> <span class="muted small">${j.name || j.job_number}</span></h3>
       <table><tr><td>Labor</td><td class="num">${money(r.labor_cents)}</td><td class="muted small">${hours(r.labor_hours)} h${r.labor_held_hours ? html`, <span class="warn">${hours(r.labor_held_hours)} held</span>` : ""}</td></tr>
-      <tr><td>Rentals</td><td class="num">${money(r.rental_cents)}</td><td class="muted small">${r.rental_lines} on rent${r.rental_lo_cents ? `, Liberty-owned ${money(r.rental_lo_cents)}` : ""}</td></tr>
+      <tr><td>Rentals</td><td class="num">${money(r.rental_cents + (r.offfeed_cents || 0))}</td><td class="muted small">${r.rental_lines} on rent${r.offfeed_lines ? `, ${r.offfeed_lines} recurring` : ""}${r.rental_lo_cents ? `, Liberty-owned ${money(r.rental_lo_cents)}` : ""}</td></tr>
       <tr><td>Purchases</td><td class="num">${money(r.purchase_cents)}</td><td class="muted small">${r.pending_lines ? html`<span class="warn">${n1(r.pending_lines, "PO")} awaiting a decision</span>` : ""}</td></tr>
       <tr class="total"><td>Total</td><td class="num">${money(r.total_cents)}</td><td></td></tr></table></div>`;
   }
@@ -173,8 +174,12 @@
       db.canEdit() ? db.view("v_labor_held", { job_number: n }) : Promise.resolve([]),
       db.canEdit() ? db.view("v_labor_priced", { job_number: n }, { range: { col: "work_date", from, to } }) : Promise.resolve([])]);
     const items = db.canEdit() ? await db.view("v_rental_items", { job_number: n }).catch(() => []) : [];
+    const [candidates, recur, charges] = await Promise.all([
+      db.view("v_recurring_candidates", { job_number: n }).catch(() => []), db.view("v_recurring_month", { job_number: n, month: from }).catch(() => []),
+      db.view("recurring_charges", { job_number: n }).catch(() => [])]);
     return { job: st.settings.jobByNumber[n] || { job_number: n, short_name: n }, month: m, tile: tileRows[0] || null, classes, rentals, purchases, held,
-      lines: lines.map((r) => Object.assign({}, r, { hours_x100: r.hours_x100 != null ? r.hours_x100 : Math.round(r.hours * 100) })), items };
+      lines: lines.map((r) => Object.assign({}, r, { hours_x100: r.hours_x100 != null ? r.hours_x100 : Math.round(r.hours * 100) })), items,
+      candidates: candidates.slice().sort((a, b) => b.monthly_cents - a.monthly_cents), recur, charges: charges.slice().sort((a, b) => (a.start_month < b.start_month ? -1 : 1)) };
   }
   function statementsFor(d) {
     // the month's statement per vendor from the items on rent at the month's snapshot
@@ -200,7 +205,7 @@
   const heldTab = (held) => held.some((h) => h.status === "held:no rate" || h.status === "held:no rate table") ? "rates" : held.some((h) => h.status === "held:unknown job") ? "jobs" : held.some((h) => h.status === "held:no class") ? "employees" : "paytypes";
   const bucketName = (b) => (b ? (B.META[b] ? B.META[b].name : b) : "");
   const poSort = (a, b) => ((a.doc_date || "") + a.doc_number < (b.doc_date || "") + b.doc_number ? -1 : 1);
-  const poStatus = (r) => html`<span class="pill ${r.status === "needs_decision" ? "held" : r.status === "excluded" ? "excluded" : "priced"}">${r.status === "needs_decision" ? "needs a decision" : r.status === "excluded" ? (r.cancelled ? "cancelled" : r.quote ? "quote" : "left out") : r.status === "confirmed" ? "counted, by decision" : "counted"}</span>`;
+  const poStatus = (r) => html`<span class="pill ${r.status === "needs_decision" ? "held" : r.status === "excluded" || r.order_type === "Rental" ? "excluded" : "priced"}">${r.status === "needs_decision" ? "needs a decision" : r.status === "excluded" ? (r.cancelled ? "cancelled" : r.quote ? "quote" : "left out") : r.order_type === "Rental" ? "rental PO, apart" : r.status === "confirmed" ? "counted, by decision" : "counted"}</span>`;
   /** the decision an editor makes on a PO the export could not count: count it on a job, in a bucket, or leave it out */
   function decideForm(r, defaultJob) {
     if (!st.db.canEdit()) return "";
@@ -212,10 +217,36 @@
       ${noAmount ? "" : html`<button name="decision" value="assign" class="primary">Count it</button>`}<button name="decision" value="exclude">Leave it out</button></form>`;
   }
   function purchaseTable(rows, d) {
-    const counted = rows.filter((r) => r.status === "auto" || r.status === "confirmed");
+    const counted = rows.filter((r) => (r.status === "auto" || r.status === "confirmed") && r.order_type !== "Rental");
     return html`<table><tr><th>PO #</th><th>Date</th><th>Supplier</th><th>Description</th><th>Type</th><th>Bucket</th><th class="num">Committed</th><th></th></tr>
       ${rows.slice().sort(poSort).map((r) => html`<tr class="${r.status === "needs_decision" ? "held" : ""}"><td class="mono">${r.doc_number}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="small">${r.order_type || ""}</td><td class="small">${bucketName(r.bucket)}</td><td class="num">${r.total_cents == null ? html`<span class="warn">no amount</span>` : money(r.total_cents)}</td><td>${poStatus(r)}</td></tr>${r.status === "needs_decision" && st.db.canEdit() ? html`<tr><td colspan="8">${decideForm(r, d.job.job_number)}</td></tr>` : ""}`)}
       <tr class="total"><td colspan="6">Counted · ${n1(counted.length, "PO")}</td><td class="num">${money(counted.reduce((a, r) => a + (r.total_cents || 0), 0))}</td><td></td></tr></table>`;
+  }
+  function recurringCard(d) {
+    if (!d.recur.length) return "";
+    return html`<div class="card" style="margin-bottom:10px"><div class="row" style="justify-content:space-between"><b>Recurring charges, confirmed</b><span class="muted small">${n1(d.recur.length, "charge")} in force</span></div>
+      <table>${d.recur.map((r) => html`<tr><td>${r.vendor_name} <span class="muted small">${r.description}${r.units > 1 ? ` × ${r.units}` : ""}</span>${r.liberty_owned ? html` <span class="pill">Liberty-owned</span>` : ""}</td><td class="num">${money(r.rent_cents)}</td><td class="num muted small">${r.markup_cents ? `+ ${money(r.markup_cents)} markup` : "rent only"}</td><td class="num">${money(r.total_cents)}</td></tr>`)}
+      <tr class="total"><td colspan="3">To client</td><td class="num">${money(d.recur.reduce((a, r) => a + r.total_cents, 0))}</td></tr></table></div>`;
+  }
+  function recurringSection(d) {
+    const edit = st.db.canEdit();
+    const off = d.candidates.filter((c) => !c.on_feed), on = d.candidates.filter((c) => c.on_feed);
+    const seen = (c) => `${c.months_seen} mo, ${C.fmtMonth(ym(c.first_month))} to ${C.fmtMonth(ym(c.last_month))}${c.current ? "" : " (ended)"}`;
+    const forms = (c) => html`<form class="confirm inline" data-key="${c.key}" data-job="${c.job_number}" style="margin-top:4px">
+      <input type="hidden" name="vendor_code" value="${c.vendor_code || ""}"><input type="hidden" name="vendor_name" value="${c.vendor_name}"><input type="hidden" name="description" value="${c.description}"><input type="hidden" name="cost_code" value="${c.cost_code || ""}"><input type="hidden" name="monthly_cents" value="${c.monthly_cents}"><input type="hidden" name="units" value="${c.units}">
+      <label>From<input type="month" name="start_month" value="${ym(c.first_month)}" required></label><label>Until<input type="month" name="end_month" value="${c.current ? "" : ym(c.last_month)}"></label>
+      <label><input type="checkbox" name="liberty_owned" ${c.liberty_owned ? "checked" : ""}> Liberty-owned, rent only</label><label><input type="checkbox" name="amount_includes_tax" checked> the amount includes tax</label>
+      <button class="primary">Confirm as monthly rental</button></form>
+      <form class="dismiss inline" data-key="${c.key}" data-job="${c.job_number}"><label>Not a rental because<input name="reason" required placeholder="a service, a purchase, billed through the PO..." style="min-width:220px"></label><button>Set aside</button></form>`;
+    return html`<h2>Recurring charges on the Job Cost To Date</h2>
+      <p class="muted small">Charges that come back every month on Liberty's cost ledger: the same vendor, line and amount. The ones no on-rent report covers are the off-feed rentals; confirm one as a monthly rental and it counts under Rentals from the month you say until the month you end it, with the job's markup. A charge from a vendor on a feed is shown against the report, never counted twice.</p>
+      ${off.length ? html`<table><tr><th>Vendor</th><th>Line</th><th>Seen</th><th class="num">A month</th><th>Invoices</th></tr>
+        ${off.map((c) => html`<tr class="${c.current ? "" : "faint"}"><td>${c.vendor_name}${c.liberty_owned ? html` <span class="pill">Liberty-owned</span>` : ""}</td><td>${c.description}${c.cost_code ? html` <span class="muted small mono">${c.cost_code}</span>` : ""}</td><td class="small">${seen(c)}</td><td class="num">${money(c.monthly_cents)}${c.units > 1 ? html` <span class="muted small">${c.units} × ${money(c.amount_cents)}</span>` : ""}</td><td class="small muted mono">${(c.invoices || []).slice(0, 2).join(", ")}</td></tr>${edit ? html`<tr><td colspan="5">${forms(c)}</td></tr>` : ""}`)}</table>` : html`<p class="muted">No recurring charge off the feeds waits for a decision${d.charges.length || on.length ? "" : "; drop the job's Job Cost To Date on Update to look"}.</p>`}
+      ${on.length ? html`<details><summary class="muted small">${n1(on.length, "recurring charge")} from vendors on a feed, ${money(on.filter((c) => c.current).reduce((a, c) => a + c.monthly_cents, 0))} a month invoiced: compare with the reports</summary>
+        <table><tr><th>Vendor</th><th>Line</th><th>Seen</th><th class="num">A month</th></tr>${on.map((c) => html`<tr class="${c.current ? "" : "faint"}"><td>${c.vendor_name}</td><td>${c.description}</td><td class="small">${seen(c)}</td><td class="num">${money(c.monthly_cents)}</td></tr>`)}</table>
+        ${d.rentals.length ? html`<p class="muted small">The reports this month: ${d.rentals.map((r) => `${vendorName(r.vendor_key)} ${money(r.rent_cents)} rent at run-rate`).join("; ")}.</p>` : ""}</details>` : ""}
+      ${d.charges.length ? html`<h3>Confirmed</h3><table><tr><th>Vendor</th><th>Line</th><th class="num">A month</th><th>From</th><th>Until</th>${edit ? html`<th></th>` : ""}</tr>
+        ${d.charges.map((r) => html`<tr><td>${r.vendor_name}${r.liberty_owned ? html` <span class="pill">Liberty-owned</span>` : ""}</td><td>${r.description}${r.units > 1 ? ` × ${r.units}` : ""}</td><td class="num">${money(r.monthly_cents)}</td><td class="small">${C.fmtMonth(ym(r.start_month))}</td><td class="small">${r.end_month ? C.fmtMonth(ym(r.end_month)) : "open"}</td>${edit ? html`<td class="nowrap"><form class="endcharge inline" data-id="${r.id}" style="display:inline"><input type="month" name="end_month" value="${r.end_month ? ym(r.end_month) : ""}"><button>Set last month</button></form> <button class="delcharge" data-id="${r.id}">Remove</button></td>` : ""}</tr>`)}</table>` : ""}`;
   }
   async function jobView(n, m) {
     const d = await jobData(n, m);
@@ -229,9 +260,9 @@
         <span class="row noprint"><a href="#/report/${n}?m=${m}"><button>Report (PDF)</button></a>${st.db.canEdit() ? html`<button id="xlsx">Export .xlsx</button>` : ""}</span></div>
       <p class="muted small">${d.job.campus ? `${d.job.campus}${d.job.region ? ` · ${d.job.region}` : ""} · ` : ""}${d.job.rate_table_code ? `rate table ${d.job.rate_table_code}${table && table.description ? ` (${table.description})` : ""}` : html`<span class="warn">no rate table: its labor is held until one is set in Settings</span>`} · rentals taxed ${pct(d.job.tax_bp == null ? 700 : d.job.tax_bp)}, markup ${pct(d.job.markup_bp == null ? 1000 : d.job.markup_bp)} on ${d.job.markup_base === "rent" ? "rent" : "rent + tax"}</p>
       ${t ? html`<div class="tiles">${tile("labor", "Labor", t.labor_cents, `${hours(t.labor_hours)} hours${t.labor_held_hours ? `, ${hours(t.labor_held_hours)} held` : ""}${t.labor_through ? ` · HH2 through ${C.fmtDay(t.labor_through)}` : ""}`)}
-        ${tile("equipment", "Rentals to client", t.rental_cents, `${t.rental_lines} on rent${t.rental_as_of ? ` as of ${C.fmtDay(t.rental_as_of)}` : ""}${t.rental_no_monthly ? `, ${t.rental_no_monthly} with no monthly figure` : ""}`)}
+        ${tile("equipment", "Rentals to client", t.rental_cents + (t.offfeed_cents || 0), `${t.rental_lines} on rent${t.rental_as_of ? ` as of ${C.fmtDay(t.rental_as_of)}` : ""}${t.rental_no_monthly ? `, ${t.rental_no_monthly} with no monthly figure` : ""}${t.offfeed_lines ? ` · ${n1(t.offfeed_lines, "recurring charge")}` : ""}`)}
         ${t.rental_lo_cents ? tile("lo", "Liberty-owned equipment", t.rental_lo_cents, "rent only") : ""}
-        ${tile("materials", "Purchases (POs)", t.purchase_cents, `${t.purchase_rental_cents ? `rental POs ${money(t.purchase_rental_cents, true)}` : ""}${t.purchase_nb_cents ? `${t.purchase_rental_cents ? " · " : ""}non-billable ${money(t.purchase_nb_cents, true)}` : ""}${t.pending_lines ? `${t.purchase_rental_cents || t.purchase_nb_cents ? " · " : ""}${n1(t.pending_lines, "PO")} awaiting a decision` : ""}`)}
+        ${tile("materials", "Purchases (material POs)", t.purchase_cents, `${t.purchase_nb_cents ? `non-billable ${money(t.purchase_nb_cents, true)}` : ""}${t.purchase_rental_cents ? `${t.purchase_nb_cents ? " · " : ""}rental POs ${money(t.purchase_rental_cents, true)} apart` : ""}${t.pending_lines ? `${t.purchase_rental_cents || t.purchase_nb_cents ? " · " : ""}${n1(t.pending_lines, "PO")} awaiting a decision` : ""}`)}
         ${tile("total", "Total", t.total_cents)}</div>` : html`<div class="notice">Nothing recorded for ${d.job.short_name} in ${C.fmtMonth(m)}.</div>`}
       <div class="grid2"><div>
         <h2>Labor by class</h2>
@@ -247,9 +278,11 @@
           <tr class="total"><td>To client</td><td class="num">${money(r.total_cents)}</td></tr>${r.liberty_owned_cents ? html`<tr><td>Liberty-owned, rent only</td><td class="num">${money(r.liberty_owned_cents)}</td></tr>` : ""}</table>
           ${r.no_monthly ? html`<p class="warn small">${r.no_monthly} line${r.no_monthly > 1 ? "s" : ""} carr${r.no_monthly > 1 ? "y" : "ies"} only a day or week rate and ${r.no_monthly > 1 ? "are" : "is"} not in the month.</p>` : ""}
           <p class="noprint"><a href="#/statement/${n}?m=${m}&v=${r.vendor_key}">Statement for the client &rarr;</a></p></div>`) : html`<p class="muted">No on-rent report covers this month.</p>`}
+        ${recurringCard(d)}
       </div></div>
-      <h2>Purchases (POs)</h2>
-      ${d.purchases.length ? html`<p class="muted small">Purchase Pro's committed amount per PO, by order date, from the latest export. Quotes and cancelled POs are listed and not counted.</p>${purchaseTable(d.purchases, d)}` : html`<p class="muted">No POs dated this month in the latest Purchase Pro export.</p>`}
+      ${recurringSection(d)}
+      <h2>Purchases (material POs)</h2>
+      ${d.purchases.length ? html`<p class="muted small">Purchase Pro's committed amount per PO, by order date, from the latest export. Material POs count; a rental PO is a commitment to a rental vendor and is shown apart (the rental itself is on a feed or a recurring charge). Quotes and cancelled POs are listed and not counted.</p>${purchaseTable(d.purchases, d)}` : html`<p class="muted">No POs dated this month in the latest Purchase Pro export.</p>`}
       ${d.lines.length ? html`<h2>Labor by cost code</h2><table><tr><th>Cost code</th><th>Name</th><th class="num">Hours</th><th class="num">Cost</th><th class="num">Held hours</th></tr>
         ${Object.values(byCode).sort((a, b) => (a.code < b.code ? -1 : 1)).map((c) => html`<tr><td class="mono">${c.code}</td><td>${c.name}</td><td class="num">${C.fmtHours(c.hours)}</td><td class="num">${money(c.cost)}</td><td class="num ${c.held ? "warn" : ""}">${c.held ? C.fmtHours(c.held) : ""}</td></tr>`)}</table>` : ""}`;
   }
@@ -262,7 +295,7 @@
     const d = await jobData(n, m);
     const summary = L.summarize(d.lines);
     const purchases = d.purchases.map((p) => ({ vendor: p.vendor_name_raw || p.vendor_key || "", doc_number: p.doc_number, doc_date: p.doc_date, description: p.description, cost_code: p.cost_code, bucket: p.bucket, amount_cents: p.total_cents || 0, status: p.status }));
-    const wb = E.jobMonth({ job: d.job, month: m, labor: { summary, rows: d.lines }, rentals: statementsFor(d), purchases });
+    const wb = E.jobMonth({ job: d.job, month: m, labor: { summary, rows: d.lines }, rentals: statementsFor(d), purchases, recurring: d.recur });
     E.download(wb, E.fileSafe(`${d.job.short_name} ${m} cost.xlsx`));
   }
 
@@ -280,14 +313,17 @@
       ${sections.length ? sections : html`<p class="muted">Nothing recorded for ${C.fmtMonth(m)}.</p>`}`;
   }
   function reportSection(d) {
-    const t = d.tile || { labor_cents: 0, labor_hours: 0, labor_held_hours: 0, rental_cents: 0, rental_lo_cents: 0, rental_lines: 0, purchase_cents: 0, pending_lines: 0, total_cents: 0 };
+    const t = d.tile || { labor_cents: 0, labor_hours: 0, labor_held_hours: 0, rental_cents: 0, rental_lo_cents: 0, rental_lines: 0, offfeed_cents: 0, offfeed_lines: 0, purchase_cents: 0, pending_lines: 0, total_cents: 0 };
     const classRows = pricedClasses(d);
     const stmts = statementsFor(d);
-    const counted = d.purchases.filter((p) => p.status === "auto" || p.status === "confirmed");
+    const counted = d.purchases.filter((p) => (p.status === "auto" || p.status === "confirmed") && p.order_type !== "Rental");
     return html`<section style="break-inside:avoid-page;margin-bottom:28px"><h2 style="font-size:16px;color:inherit;text-transform:none;letter-spacing:0">${d.job.short_name} <span class="muted">${d.job.name || ""} · ${d.job.job_number}${d.job.campus ? ` · ${d.job.campus}` : ""}</span></h2>
-      <div class="tiles">${tile("labor", "Labor", t.labor_cents, `${hours(t.labor_hours)} hours${t.labor_held_hours ? `, ${hours(t.labor_held_hours)} held` : ""}`)}${tile("equipment", "Rentals to client", t.rental_cents, `${t.rental_lines} on rent`)}${t.rental_lo_cents ? tile("lo", "Liberty-owned", t.rental_lo_cents, "rent only") : ""}${tile("materials", "Purchases (POs)", t.purchase_cents, t.pending_lines ? `${n1(t.pending_lines, "PO")} awaiting a decision` : "")}${tile("total", "Total", t.total_cents)}</div>
+      <div class="tiles">${tile("labor", "Labor", t.labor_cents, `${hours(t.labor_hours)} hours${t.labor_held_hours ? `, ${hours(t.labor_held_hours)} held` : ""}`)}${tile("equipment", "Rentals to client", t.rental_cents + (t.offfeed_cents || 0), `${t.rental_lines} on rent${t.offfeed_lines ? `, ${t.offfeed_lines} recurring` : ""}`)}${t.rental_lo_cents ? tile("lo", "Liberty-owned", t.rental_lo_cents, "rent only") : ""}${tile("materials", "Purchases (material POs)", t.purchase_cents, t.pending_lines ? `${n1(t.pending_lines, "PO")} awaiting a decision` : "")}${tile("total", "Total", t.total_cents)}</div>
       ${classRows.length ? classTable(classRows, "Labor") : ""}
       ${stmts.map((s) => statementTable(s, d))}
+      ${d.recur.length ? html`<h3>Recurring rentals · confirmed from the Job Cost To Date</h3><table><tr><th>Vendor</th><th>Line</th><th class="num">A month</th><th class="num">Markup</th><th class="num">Total</th></tr>
+        ${d.recur.map((r) => html`<tr><td>${r.vendor_name}${r.liberty_owned ? html` <span class="pill">Liberty-owned</span>` : ""}</td><td>${r.description}${r.units > 1 ? ` × ${r.units}` : ""}</td><td class="num">${money(r.rent_cents)}</td><td class="num">${money(r.markup_cents)}</td><td class="num">${money(r.total_cents)}</td></tr>`)}
+        <tr class="total"><td colspan="4">Recurring rentals</td><td class="num">${money(d.recur.reduce((a, r) => a + r.total_cents, 0))}</td></tr></table>` : ""}
       ${counted.length ? html`<h3>Purchase orders · ${n1(counted.length, "PO")}</h3><table><tr><th>PO #</th><th>Date</th><th>Supplier</th><th>Description</th><th>Type</th><th class="num">Committed</th></tr>
         ${counted.slice().sort((a, b) => (a.doc_date + a.doc_number < b.doc_date + b.doc_number ? -1 : 1)).map((r) => html`<tr><td class="mono">${r.doc_number}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="small">${r.order_type || ""}</td><td class="num">${money(r.total_cents)}</td></tr>`)}
         <tr class="total"><td colspan="5">Purchases</td><td class="num">${money(counted.reduce((a, r) => a + (r.total_cents || 0), 0))}</td></tr></table>` : ""}</section>`;
@@ -309,7 +345,7 @@
 
   // ---- Update ---------------------------------------------------------------------------------------------
   function updateView() {
-    return html`<h1>Update</h1><p class="muted">Drop the HH2 Labor Detail export, the vendors' on-rent reports (United Rentals, Sunbelt, Herc, EquipmentShare, or the page's own CSV), the Purchase Pro PO export, a Sage rate table export, or the Projects register. A zip or a folder is fine; each file is read by what is in it, not its name. Nothing is saved until you press Record.</p>
+    return html`<h1>Update</h1><p class="muted">Drop the HH2 Labor Detail export, the vendors' on-rent reports (United Rentals, Sunbelt, Herc, EquipmentShare, or the page's own CSV), the Purchase Pro PO export, each job's Job Cost To Date, a Sage rate table export, or the Projects register. A zip or a folder is fine; each file is read by what is in it, not its name. Nothing is saved until you press Record.</p>
       <div class="drop" id="drop"><div><b>Drop files here</b>, or <label><button type="button" id="pick">choose files</button><input id="files" type="file" multiple></label> or <label><button type="button" id="pickdir">a folder</button><input id="dir" type="file" webkitdirectory multiple></label></div></div>
       <div id="cards">${cardsView()}</div>`;
   }
@@ -357,6 +393,7 @@
     }
     if (k === "projects") return r.added ? `${n1(r.added, "job")} added; campus and region filled in where blank.` : "Every job was already on file; campus and region filled in where blank.";
     if (k === "purchase_orders") return `This export now stands for every PO; the month's purchases come from it.`;
+    if (k === "jctd") { const n = r.candidates || 0, sm = c.candidates ? c.candidates.filter((x) => !x.on_feed).length : 0; return n ? `${n1(n, "recurring charge")} found${sm ? `, ${sm} off the feeds: confirm them as monthly rentals on the job page` : ", all from vendors on a feed"}.` : "No recurring charge found on it."; }
     if (k === "hh2_labor") return "";
     return "";
   }
@@ -408,7 +445,7 @@
   const classOptions = (selected) => html`<option value="" ${selected ? "" : "selected"}>(by prefix)</option>${L.KNOWN_CLASSES.map((c) => html`<option value="${c}" ${c === selected ? "selected" : ""}>${classLabel(c)}</option>`)}`;
   async function settingsView(tab) {
     const S = st.settings, edit = st.db.canEdit();
-    const tabs = [["jobs", "Jobs"], ["vendors", "Vendors"], ["jobmap", "Vendor job names"], ["rates", "Rate tables"], ["employees", "Employees"], ["paytypes", "Pay types"], ["purchases", "Purchases"], ["members", "People"], ["files", "Files"]];
+    const tabs = [["jobs", "Jobs"], ["vendors", "Vendors"], ["jobmap", "Vendor job names"], ["rates", "Rate tables"], ["employees", "Employees"], ["paytypes", "Pay types"], ["purchases", "Purchases"], ["recurring", "Recurring"], ["members", "People"], ["files", "Files"]];
     let body;
     if (tab === "jobs") {
       const held = edit ? await st.db.view("v_labor_held", { status: "held:unknown job" }) : [];
@@ -476,6 +513,11 @@
       body = html`<p class="muted small">POs the latest Purchase Pro export could not count by itself: on a job not in Settings, or with no committed amount yet. Count one on a job, in its bucket, or leave it out with a reason. A decision is about the PO, so it holds through the next export. If the job is real, add it on the Jobs tab instead: every PO on it then counts by itself.</p>
         ${pend.length ? html`<table><tr><th>PO #</th><th>Date</th><th>Supplier</th><th>Description</th><th>Type</th><th>PO's job</th><th class="num">Committed</th></tr>
           ${pend.map((r) => html`<tr class="held"><td class="mono">${r.doc_number}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="small">${r.order_type || ""}</td><td>${st.settings.jobByNumber[r.job_number] ? `${jobName(r.job_number)} · ${r.job_number}` : html`<span class="warn">${r.job_number || "(none)"} · not in Settings</span>`}</td><td class="num">${r.total_cents == null ? html`<span class="warn">no amount</span>` : money(r.total_cents)}</td></tr><tr><td colspan="7">${decideForm(r, "")}</td></tr>`)}</table>` : html`<p class="muted">Nothing waits for a decision.</p>`}`;
+    } else if (tab === "recurring") {
+      const all = (await st.db.view("recurring_charges", {}, { order: "job_number" }).catch(() => [])).sort((a, b) => (a.job_number + a.start_month < b.job_number + b.start_month ? -1 : 1));
+      body = html`<p class="muted small">Every charge confirmed as a monthly rental, across jobs: counted under Rentals from its first month until its last, with the job's markup. The candidates wait on each job's page, found on its Job Cost To Date.</p>
+        ${all.length ? html`<table><tr><th>Job</th><th>Vendor</th><th>Line</th><th class="num">A month</th><th>From</th><th>Until</th><th>Source</th>${edit ? html`<th></th>` : ""}</tr>
+          ${all.map((r) => html`<tr><td><a href="#/job/${r.job_number}">${jobName(r.job_number)}</a></td><td>${r.vendor_name}${r.liberty_owned ? html` <span class="pill">Liberty-owned</span>` : ""}</td><td>${r.description}${r.units > 1 ? ` × ${r.units}` : ""}</td><td class="num">${money(r.monthly_cents)}</td><td class="small">${C.fmtMonth(ym(r.start_month))}</td><td class="small">${r.end_month ? C.fmtMonth(ym(r.end_month)) : "open"}</td><td class="small">${r.source}</td>${edit ? html`<td class="nowrap"><form class="endcharge inline" data-id="${r.id}" style="display:inline"><input type="month" name="end_month" value="${r.end_month ? ym(r.end_month) : ""}"><button>Set last month</button></form> <button class="delcharge" data-id="${r.id}">Remove</button></td>` : ""}</tr>`)}</table>` : html`<p class="muted">Nothing confirmed yet.</p>`}`;
     } else if (tab === "members") {
       body = html`<table><tr><th>Email</th><th>Role</th><th>Name</th></tr>${S.members.map((m) => html`<tr><td>${m.email}</td><td>${m.role}</td><td>${m.display_name || ""}</td></tr>`)}</table>
         ${st.db.role === "owner" ? html`<form id="invite" class="inline"><label>Email<input name="email" type="email" required></label><label>Role<select name="role"><option value="viewer">viewer (sees totals, never names)</option><option value="editor">editor</option><option value="owner">owner</option></select></label><button>Invite</button></form>` : html`<p class="muted small">Owners invite people.</p>`}`;
@@ -511,6 +553,27 @@
     if (r.page === "settings") wireSettings();
     const x = $("#xlsx"); if (x) x.addEventListener("click", () => exportJob(r.parts[1], monthQ(r.q)).catch((e) => toast(e.message)));
     const bk = $("#buckets"); if (bk) bk.addEventListener("click", () => exportBuckets(monthQ(r.q)).catch((e) => toast(e.message)));
+    $$("form.confirm").forEach((f) => f.addEventListener("submit", async (ev) => {
+      ev.preventDefault(); const d = Object.fromEntries(new FormData(f));
+      if (d.end_month && d.end_month < d.start_month) return toast("The last month comes before the first.");
+      try {
+        await st.db.insert("recurring_charges", { job_number: f.dataset.job, candidate_key: f.dataset.key, vendor_code: d.vendor_code || null, vendor_name: d.vendor_name, description: d.description, cost_code: d.cost_code || null,
+          monthly_cents: +d.monthly_cents, units: +d.units || 1, liberty_owned: !!d.liberty_owned, amount_includes_tax: !!d.amount_includes_tax, start_month: d.start_month + "-01", end_month: d.end_month ? d.end_month + "-01" : null, source: "jctd" });
+        toast("Confirmed; it counts under Rentals now."); render();
+      } catch (e) { toast(e.message); }
+    }));
+    $$("form.dismiss").forEach((f) => f.addEventListener("submit", async (ev) => {
+      ev.preventDefault(); const reason = f.reason.value.trim(); if (!reason) return toast("Say why it is not a rental.");
+      try { await st.db.insert("recurring_dismissals", { job_number: f.dataset.job, candidate_key: f.dataset.key, reason }); toast("Set aside; it will not come back."); render(); } catch (e) { toast(e.message); }
+    }));
+    $$("form.endcharge").forEach((f) => f.addEventListener("submit", async (ev) => {
+      ev.preventDefault(); const v = f.end_month.value;
+      try { await st.db.update("recurring_charges", { id: f.dataset.id }, { end_month: v ? v + "-01" : null }); toast(v ? `Last month set to ${C.fmtMonth(v)}.` : "Open again."); render(); } catch (e) { toast(e.message); }
+    }));
+    $$("button.delcharge").forEach((b) => b.addEventListener("click", async () => {
+      if (!confirm("Remove this confirmed charge? Its months stop counting; the candidate comes back on the job page.")) return;
+      try { await st.db.remove("recurring_charges", { id: b.dataset.id }); toast("Removed."); render(); } catch (e) { toast(e.message); }
+    }));
     $$("form.decide").forEach((f) => f.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       const decision = (ev.submitter && ev.submitter.value) || "assign", d = Object.fromEntries(new FormData(f)), reason = (d.reason || "").trim();

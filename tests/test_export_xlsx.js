@@ -36,7 +36,7 @@ check("Summary: labor, rentals and purchases in dollars, and the total is their 
   eq(s[0][0], "DC4 - Sep 2026");
   const row = (label) => s.find((r) => r[0] === label);
   eq(row("Labor")[1], summary.costCents / 100); eq(row("Rentals (to client)")[1], st.total.total / 100);
-  eq(row("Purchases")[1], 123.45, "excluded purchase left out");
+  eq(row("Purchases (material POs)")[1], 123.45, "excluded purchase left out");
   eq(row("Total")[1], (summary.costCents + st.total.total + 12345) / 100);
 });
 check("Labor lines: one row per HH2 row, employee number only, never a name", () => {
