@@ -89,8 +89,8 @@
       return d;
     };
 
-    const lines = [], asOfs = new Set(), vendorsSeen = new Map(), idCount = new Map();
-    let rent = 0, noMonthly = 0, skipped = 0, identified = 0, unidentified = [], noUnit = 0;
+    const lines = [], asOfs = new Set(), derived = new Set(), accounts = new Set(), vendorsSeen = new Map(), idCount = new Map();
+    let rent = 0, noMonthly = 0, skipped = 0, identified = 0, unidentified = [], noUnit = 0, qtyUnknown = 0;
     const notCounted = {};
     for (let i = rowIndex + 1; i < rows.length; i++) {
       const r = rows[i];
@@ -126,6 +126,9 @@
       let qty = C.toNumber(qtyRaw);
       if (qty == null) qty = 1;
       if (Number.isNaN(qty) || qty <= 0) throw new C.UnknownFormat(`${where}: quantity "${C.str(qtyRaw)}" is not a positive number.`);
+      // no quantity column: a serial number means one unit; without one the line may be many units, which the export does not say
+      let qtyKnown = true;
+      if (layout.unit_by_serial) { qty = 1; if (!textOf(r, "serial")) qtyKnown = false; }
       const on_rent_date = dateOf(r, "on_rent_date", excelRow);
       const day = moneyOf(r, "day_rate", excelRow), week = moneyOf(r, "week_rate", excelRow),
         four = moneyOf(r, "fourweek_rate", excelRow), month = moneyOf(r, "month_rate", excelRow);
@@ -140,10 +143,17 @@
       else if (four != null) { rate_period = "4week"; rate_cents = four; monthly_rent_cents = C.roundHalfUp(four * qty); }
       else if (week != null) { rate_period = "week"; rate_cents = week; }
       else if (day != null) { rate_period = "day"; rate_cents = day; }
+      if (!qtyKnown && monthly_rent_cents) { monthly_rent_cents = null; qtyUnknown++; }
       const lo = flagOf(pick(r, "liberty_owned"));
       if (Number.isNaN(lo)) throw new C.UnknownFormat(`${where}: Liberty Owned "${C.str(pick(r, "liberty_owned"))}" must be Y or N.`);
       const asOfCell = dateOf(r, "as_of", excelRow);
       if (asOfCell) asOfs.add(asOfCell);
+      if (layout.as_of.derive === "rented_plus_days") {
+        const days = C.toNumber(pick(r, "days_on_rent"));
+        if (on_rent_date && days != null && !Number.isNaN(days)) derived.add(C.addDays(on_rent_date, Math.round(days)));
+      }
+      const account = textOf(r, "account");
+      if (account) accounts.add(account);
       const id = [equipment_no, contract_no, vendor_job_ref].join("|");
       const seq = (idCount.get(id) || 0) + 1;
       idCount.set(id, seq);
@@ -154,7 +164,8 @@
         po: textOf(r, "po") || null, est_return: dateOf(r, "est_return", excelRow) || null,
         billed_through: dateOf(r, "billed_through", excelRow) || null, pickup_date: dateOf(r, "pickup_date", excelRow) || null,
         liberty_owned: lo, cost_code: textOf(r, "cost_code") || null,
-        raw: { equipment_from: equipmentFrom === "unit" ? null : equipmentFrom, job_ref_alt: textOf(r, "job_ref_alt") || null, ordered_by: textOf(r, "ordered_by") || null, account: textOf(r, "account") || null,
+        raw: { equipment_from: equipmentFrom === "unit" ? null : equipmentFrom, job_ref_alt: textOf(r, "job_ref_alt") || null, ordered_by: textOf(r, "ordered_by") || null, account: account || null,
+          qty_unknown: qtyKnown ? null : true, job_location: textOf(r, "job_location") || null,
           cat_class: textOf(r, "cat_class") || null, make: textOf(r, "make") || null, model: textOf(r, "model") || null, serial: textOf(r, "serial") || null,
           code1: textOf(r, "code1") || null, code1_label: textOf(r, "code1_label") || null, code2: textOf(r, "code2") || null, code2_label: textOf(r, "code2_label") || null,
           status: textOf(r, "status") || null, shift: textOf(r, "shift") || null, next_bill: dateOf(r, "next_bill", excelRow) || null,
@@ -181,9 +192,12 @@
     if (opts.as_of) { as_of = C.parseDate(opts.as_of); asOfSource = "given"; }
     else if (asOfs.size === 1) { as_of = [...asOfs][0]; asOfSource = "column"; }
     else if (asOfs.size > 1) throw new C.UnknownFormat(`${fileName}: the ${cols.as_of} column carries ${asOfs.size} different days; one report is as of one day.`);
+    else if (derived.size === 1) { as_of = [...derived][0]; asOfSource = "derived"; }
     else if (layout.as_of.name && asOfFromName(fileName)) { as_of = asOfFromName(fileName); asOfSource = "name"; }
     if (!as_of || Number.isNaN(as_of)) {
-      throw new C.NeedsDecision(`${fileName} does not say what day it is as of${layout.as_of.column ? ` (its ${layout.as_of.column} column is empty)` : ""}. Say the date and it reads.`,
+      const why = derived.size > 1 ? ` (Date Rented plus Number of Days on Rent lands on ${derived.size} different days: ${[...derived].sort().join(", ")})`
+        : layout.as_of.column ? ` (its ${layout.as_of.column} column is empty)` : "";
+      throw new C.NeedsDecision(`${fileName} does not say what day it is as of${why}. Say the date and it reads.`,
         { need: "as_of", fileName, layout: layout.layout });
     }
     const repeats = [...idCount.values()].filter((n) => n > 1).length;
@@ -193,7 +207,7 @@
       kind: "onrent", fileName, layout: layout.layout, layoutName: layout.name,
       vendor_key: vendor.vendor_key, vendor_name: vendor.name, vendorKnown: !!vendor.known,
       as_of, asOfSource, lines,
-      totals: { lines: lines.length, rent_cents: rent, noMonthly, skipped, repeats, noUnit, notCounted,
+      totals: { lines: lines.length, rent_cents: rent, noMonthly, skipped, repeats, noUnit, notCounted, qtyUnknown, accounts: accounts.size,
         liberty_owned: lines.filter((l) => l.liberty_owned).length,
         jobRefs: Object.keys(jobRefs).sort(), jobRefCounts: jobRefs },
     };

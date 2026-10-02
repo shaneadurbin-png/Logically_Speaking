@@ -132,6 +132,54 @@
   "urJobMap": {
     "CDR-SCCI-DC4": "50-60-225121"
   },
+  "sunbelt_all": {
+    "file": "Equipment on Rent - All Jobs.csv",
+    "vendor_key": "sunbelt",
+    "layout": "sunbelt_all_jobs",
+    "lines": 8,
+    "rent_cents": 632500,
+    "noMonthly": 3,
+    "qtyUnknown": 3,
+    "repeats": 1,
+    "accounts": 3,
+    "as_of": "2026-10-02",
+    "jobRefs": [
+      "PBIA",
+      "QTS DC4",
+      "SBN 201-204",
+      "TERMINAL E DEMO"
+    ],
+    "equipment": [
+      "10516425",
+      "10601596",
+      "1540294",
+      "1540400",
+      "SPIDER100",
+      "SPIDER100",
+      "11258433",
+      "10676725"
+    ],
+    "seqs": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      2,
+      1,
+      1
+    ],
+    "monthly": [
+      35000,
+      58000,
+      null,
+      0,
+      null,
+      null,
+      477500,
+      62000
+    ]
+  },
   "es": {
     "file": "EquipShare_rentals-export_9.4.26.csv",
     "vendor_key": "equipmentshare",

@@ -27,6 +27,7 @@ Live use needs the project filled in `app/config.js` (below). Sign in with the 6
 | HH2 **Labor Detail** export (`LaborDetails_9_1_2026_to_9_30_2026.xlsx`) | every row kept, duplicates included (HH2 writes real split entries); the week in the name must match the data; priced the moment it lands |
 | **United Rentals** Total Control "Equipment On Rent - All Jobs" (`.xls`) | the as-of date comes from the name; bulk items with no unit number are kept by their category-class code |
 | **Sunbelt** account export (`.csv`) | the file does not say what day it is as of, so the card asks; 4-week rate × quantity is the month |
+| **Sunbelt** "Equipment on Rent - All Jobs" (`.csv`, every account in one file) | the day it ran is Date Rented + Number of Days on Rent, which every line must agree on; a line with a serial number is one unit; a bulk line (cable, deck panels) carries no quantity in this export, so it shows its rate and is not counted |
 | **Herc** "Equipment On Rent Summary" (`.xlsx`) | the as-of is the Report Date column (the name's date is not it) |
 | **EquipmentShare** rentals export (`.csv`) | only lines with status On-rent count; short dates in the name ("9.4.26") read |
 | **Purchase Pro** `Tbl_PO1` export | a snapshot of every PO: the latest export stands for all of them |

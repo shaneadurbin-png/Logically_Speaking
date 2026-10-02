@@ -179,6 +179,34 @@ const snbRows = [
 write("onrent/sunbelt_account_export.csv", csv([SNB_H].concat(snbRows)));
 write("onrent/bad/sunbelt_other_customer.csv", csv([SNB_H].concat(snbRows.map((r) => r.map((v) => (v === "LIBERTY BUILDS-SNB" ? "ACME CO" : v))))));
 
+// Sunbelt's company-wide export (real header of 2026-10-02): a line per contract line, no Quantity column,
+// and no date of its own; Date Rented + Number of Days on Rent is the day it ran, on every line.
+const SNBA_H = ["Account #", "Contract #", "Job #", "Job_Location", "Job Name", "PO_Number", "Equipment Type", "Cat-Class", "Equipment #", "Make", "Model", "Serial #", "Est Return Date", "Day Rate", "Week Rate", "4 Week Rate", "Date Rented", "Number of Days on Rent"];
+function snba(o) {
+  const r = Object.fromEntries(SNBA_H.map((h) => [h, ""]));
+  Object.assign(r, { "Account #": "1011435", "Job_Location": "4310 76TH AVE SW, FAIRFAX", "Serial #": "N/A", "Est Return Date": "11/24/2026", "Day Rate": "$0.00", "Week Rate": "$0.00", "4 Week Rate": "$0.00", "Date Rented": "3/31/2026", "Number of Days on Rent": "185" }, o);
+  return SNBA_H.map((h) => r[h]);
+}
+const snbaRows = [
+  // serialised units: one each, the 4-week rate is the month
+  snba({ "Account #": "550106", "Contract #": "173109837", "Job #": "01821", "Job_Location": "1 HARBORSIDE DR, BOSTON", "Job Name": "TERMINAL E DEMO", "PO_Number": "7050984", "Equipment Type": "012-0317 4000 WATT (EQUIVALENT) LED LIGHT CART", "Cat-Class": "012-0317", "Equipment #": "10516425", "Make": "LIND", "Model": "LE980LEDV-T4-SB", "Serial #": "LE980LEDV-T-487617", "Est Return Date": "4/1/2026", "Day Rate": "$65.00", "Week Rate": "$150.00", "4 Week Rate": "$350.00", "Date Rented": "8/20/2025", "Number of Days on Rent": "408" }),
+  snba({ "Account #": "550106", "Contract #": "173338704", "Job #": "01821", "Job_Location": "1 HARBORSIDE DR, BOSTON", "Job Name": "TERMINAL E DEMO", "PO_Number": "7051010", "Equipment Type": "012-0405 4000W NARROW VERTICAL MAST LIGHT TOWER", "Cat-Class": "012-0405", "Equipment #": "10601596", "Make": "WACKER", "Model": "LTV6L", "Serial #": "WNCLTV01EPUM14140", "Est Return Date": "9/22/2025", "Day Rate": "$175.00", "Week Rate": "$385.00", "4 Week Rate": "$580.00", "Date Rented": "8/25/2025", "Number of Days on Rent": "403" }),
+  // a bulk line with a rate and no serial: how many mats is not in this export, so the month is not counted
+  snba({ "Account #": "633837", "Contract #": "175090343", "Job #": "1", "Job_Location": "1000 JAMES L TURNAGE BLVD, WEST PALM BEA", "Job Name": "PBIA", "PO_Number": "TURNAGE BLVD", "Equipment Type": "154-0294 MEGADECK PLUS MAT - 7X14", "Cat-Class": "154-0294", "Equipment #": "1540294", "Est Return Date": "12/26/2025", "Day Rate": "$10.00", "Week Rate": "$45.00", "4 Week Rate": "$100.00", "Date Rented": "10/3/2025", "Number of Days on Rent": "364" }),
+  // a $0 accessory with no serial: its quantity is unknown too, but there is nothing to count, so it is not among the uncounted
+  snba({ "Account #": "633837", "Contract #": "175090343", "Job #": "1", "Job_Location": "1000 JAMES L TURNAGE BLVD, WEST PALM BEA", "Job Name": "PBIA", "PO_Number": "TURNAGE BLVD", "Equipment Type": "154-0400 MEGADECK PLUS LOCKING PIN", "Cat-Class": "154-0400", "Equipment #": "1540400", "Est Return Date": "12/26/2025", "Date Rented": "10/3/2025", "Number of Days on Rent": "364" }),
+  // the same bulk identity twice (two contract lines): numbered, both without a quantity
+  snba({ "Contract #": "187028599", "Job #": "2 - QTS", "Job Name": "QTS DC4", "PO_Number": "01-99-1139", "Equipment Type": "150-0805 100' SPIDERBOX CABLE 6/4", "Cat-Class": "150-0805", "Equipment #": "SPIDER100", "Day Rate": "$42.64", "Week Rate": "$102.96", "4 Week Rate": "$267.28", "Date Rented": "7/27/2026", "Number of Days on Rent": "67" }),
+  snba({ "Contract #": "187028599", "Job #": "2 - QTS", "Job Name": "QTS DC4", "PO_Number": "01-99-1139", "Equipment Type": "150-0805 100' SPIDERBOX CABLE 6/4", "Cat-Class": "150-0805", "Equipment #": "SPIDER100", "Day Rate": "$42.64", "Week Rate": "$102.96", "4 Week Rate": "$267.28", "Date Rented": "7/27/2026", "Number of Days on Rent": "67" }),
+  snba({ "Contract #": "181921023", "Job #": "2 - QTS", "Job Name": "QTS DC4", "PO_Number": "01-99-1139", "Equipment Type": "056-0636 12K 55' HVAC TELEHANDLER FORKLIFT", "Cat-Class": "056-0636", "Equipment #": "11258433", "Make": "JCB", "Model": "51256", "Serial #": "JCB5AAEFG02881113", "Day Rate": "$825.00", "Week Rate": "$2,155.00", "4 Week Rate": "$4,775.00" }),
+  snba({ "Contract #": "165537746", "Job #": "4 - LIBERTY BUILDS -", "Job_Location": "31100 IN-2, NEW CARLISLE", "Job Name": "SBN 201-204", "PO_Number": "71402093", "Equipment Type": "059-0570 UTILITY VEHICLE 4 SEAT 4WD GAS CAB", "Cat-Class": "059-0570", "Equipment #": "10676725", "Make": "POLARIS", "Model": "D22M4G57B4", "Serial #": "3NSM4G572NG123456", "Day Rate": "$185.00", "Week Rate": "$350.00", "4 Week Rate": "$620.00", "Date Rented": "2/17/2025", "Number of Days on Rent": "592" }),
+];
+write("onrent/Equipment on Rent - All Jobs.csv", csv([SNBA_H].concat(snbaRows)));
+// one line's day count off by one: the lines no longer agree on the day, so the card asks
+write("onrent/bad/sunbelt_all_jobs_days_disagree.csv", csv([SNBA_H].concat(snbaRows.map((r, i) => (i === 1 ? r.map((v, j) => (SNBA_H[j] === "Number of Days on Rent" ? "402" : v)) : r)))));
+// the columns with codes that are not Sunbelt's
+write("onrent/bad/sunbelt_all_jobs_other_codes.csv", csv([SNBA_H].concat(snbaRows.map((r) => r.map((v, j) => (SNBA_H[j] === "Cat-Class" ? "X-1" : v))))));
+
 const HERC_H = ["Account Name", "Account Number", "Asset Utilization", "Branch", "Cat Class", "Cat Class Description", "Contract Number", "Cycle Bills", "Date Out", "Day Rate $", "Days On Rent", "Days On Rent Last Month", "Days Until Next Cycle", "Est. Charges To Date $", "Estimated Return Date", "GPS Address (Last Known)", "GPS Coordinates (Last Known)", "GPS Reporting (Last Known)", "GPS Reporting Status", "Herc Plus Name", "Herc Plus Number", "Hr/Miles", "Hr/Miles Out", "IC Description", "IC Number", "Invalid PO", "Invoice Number", "Job Address", "Job City", "Job Contact", "Job Country", "Job Location", "Job Name", "Job Number", "Job State", "Job Zip", "Last Bill Date", "License Plate", "Make", "Major Category", "Odometer", "Model", "Month", "Month Rate $", "Next Bill Date", "On Pick Up Ticket", "Ordered By", "Overdue Status", "Purchase Order", "Equipment Quantity", "Report Date", "Serial Number", "Start Date", "Start Time", "Total Est. Rental Charges $", "Total Rental Spend $", "Vendor", "Vin", "Week Rate $", "Pickup Ticket", "Scheduled Time For Pickup", "Total Hours Used on Contract (180 Days)"];
 function herc(o) {
   const r = Object.fromEntries(HERC_H.map((h) => [h, "-"]));
@@ -244,6 +272,10 @@ Object.assign(X, {
   ur: { file: "Equipment_On_Rent_-_All_Jobs_2026-09-26-08.00.00.xlsx", vendor_key: "united_rentals", layout: "united_rentals", lines: 7, rent_cents: 727000, repeats: 1, noUnit: 1, as_of: "2026-09-26",
     equipment: ["11334445", "535-2020", "6002410", "6002410", "6002410", "PV1689647", "11999999"], jobRefs: ["CDR E1 - LOENBRO", "CDR-SCCI-DC4", "CDR-SCCI-DC4.DC5"] },
   urJobMap: { "CDR-SCCI-DC4": "50-60-225121" },
+  sunbelt_all: { file: "Equipment on Rent - All Jobs.csv", vendor_key: "sunbelt", layout: "sunbelt_all_jobs", lines: 8, rent_cents: 632500, noMonthly: 3, qtyUnknown: 3, repeats: 1, accounts: 3,
+    as_of: "2026-10-02", jobRefs: ["PBIA", "QTS DC4", "SBN 201-204", "TERMINAL E DEMO"],
+    equipment: ["10516425", "10601596", "1540294", "1540400", "SPIDER100", "SPIDER100", "11258433", "10676725"], seqs: [1, 1, 1, 1, 1, 2, 1, 1],
+    monthly: [35000, 58000, null, 0, null, null, 477500, 62000] },
   es: { file: "EquipShare_rentals-export_9.4.26.csv", vendor_key: "equipmentshare", layout: "equipmentshare", lines: 4, rent_cents: 257150, as_of: "2026-09-04", notCounted: { "Off-rent": 1 },
     equipment: ["#748680", "#742475", "500-1203", "#530093"], jobRefs: ["Cedar Rapids", "PDX-202", "PDX-203"] },
   ur_dc4: { lines: 3, rent: 353500, tax: 24745, markup: 37825, total: 416070 },

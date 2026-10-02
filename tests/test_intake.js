@@ -46,6 +46,14 @@ const ctx = { labor: { rates, employees, policy: {}, jobs }, vendorSettings: {},
     const c2 = await Intake.inspect(b("onrent/sunbelt_account_export.csv"), "sunbelt_account_export.csv", Object.assign({ asOf: { "sunbelt_account_export.csv": "2026-10-01" } }, ctx));
     eq(c2.status, "ready"); eq(c2.doc.as_of, "2026-10-01"); ok(/repeat/.test(c2.notes.join(" ")));
   });
+  await checkAsync("Sunbelt's all-jobs export: the day worked out from the data, the bulk lines without a quantity named", async () => {
+    const c = await Intake.inspect(b("onrent/Equipment on Rent - All Jobs.csv"), "Equipment on Rent - All Jobs.csv", ctx);
+    eq(c.status, "ready"); eq(c.doc.as_of, "2026-10-02"); eq(c.doc.asOfSource, "derived");
+    eq(c.stamp, "Sunbelt Rentals, as of Oct 2, 2026: 8 on rent, $6,325.00 rent a month (3 with no monthly figure)");
+    const notes = c.notes.join(" | ");
+    ok(/worked out from Date Rented \+ Number of Days on Rent/.test(notes)); ok(/3 lines carry no quantity/.test(notes)); ok(/3 accounts in one file/.test(notes));
+    ok(!/day or week rate/.test(notes), "the no-quantity lines are not called day-or-week lines");
+  });
   await checkAsync("a Sage rate table export: ready, tables named, jobs matched by number", async () => {
     const c = await Intake.inspect(b("rates/Sage_Rate_Tables_2026.xlsx"), "Sage_Rate_Tables_2026.xlsx", ctx);
     eq(c.status, "ready"); eq(c.kind, "sage_rates"); eq(c.stamp, "2 rate tables, 27 rates"); eq(c.conservation, { rates: 27 });

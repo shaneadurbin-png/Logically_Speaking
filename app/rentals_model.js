@@ -99,7 +99,7 @@
       const job = (jobMap && jobMap[l.vendor_job_ref]) || "unmapped";
       if (job !== job_number) continue;
       const c = l.monthly_rent_cents == null ? null : (l.liberty_owned ? { rent: l.monthly_rent_cents, tax: 0, markup: 0, total: l.monthly_rent_cents } : cost(l.monthly_rent_cents, s));
-      rows.push({ equipment_no: l.equipment_no, contract_no: l.contract_no, description: l.description, qty: l.qty,
+      rows.push({ equipment_no: l.equipment_no, contract_no: l.contract_no, description: l.description, qty: l.qty, qty_unknown: !!(l.raw && l.raw.qty_unknown),
         on_rent_date: l.on_rent_date, rate_period: l.rate_period, rate_cents: l.rate_cents,
         liberty_owned: l.liberty_owned, monthly_rent_cents: l.monthly_rent_cents,
         tax_cents: c ? c.tax : null, markup_cents: c ? c.markup : null, total_cents: c ? c.total : null });

@@ -78,7 +78,7 @@
     for (const st of d.rentals || []) {
       const rows = [[`${st.vendor_key} on rent as of ${C.fmtDay(st.as_of)}`], [],
         ["Equipment #", "Contract #", "Description", "Qty", "On rent since", "Period", "Rate", "Monthly rent", "Tax", "Markup", "To client", "Liberty-owned"]]
-        .concat(st.rows.map((r) => [r.equipment_no, r.contract_no, r.description, r.qty, r.on_rent_date || "", r.rate_period || "", $(r.rate_cents), $(r.monthly_rent_cents), $(r.tax_cents), $(r.markup_cents), $(r.total_cents), r.liberty_owned ? "Y" : ""]));
+        .concat(st.rows.map((r) => [r.equipment_no, r.contract_no, r.description, r.qty_unknown ? "?" : r.qty, r.on_rent_date || "", r.rate_period || "", $(r.rate_cents), $(r.monthly_rent_cents), $(r.tax_cents), $(r.markup_cents), $(r.total_cents), r.liberty_owned ? "Y" : ""]));
       rows.push(["Total", "", "", null, "", "", null, $(st.total.rent + st.total.liberty_owned), $(st.total.tax), $(st.total.markup), $(st.total.total), st.total.liberty_owned ? $(st.total.liberty_owned) : ""]);
       if (st.offRent.length) {
         rows.push([], ["Off rent since the previous report"], ["Equipment #", "Contract #", "Description", "", "Last seen", "Off rent"]);
@@ -115,7 +115,7 @@
     const wb = XLSX.utils.book_new();
     const rows = [[`${job.short_name || job.job_number} - Equipment on rent, ${C.fmtMonth(month)}`], [`As of ${C.fmtDay(st.as_of)}; rent plus ${st.settings.taxable ? st.settings.tax_bp / 100 + "% tax plus " : ""}${st.settings.markup_bp / 100}% markup`], [],
       ["Equipment #", "Description", "Qty", "On rent since", "Monthly rent", "Tax", "Markup", "Total"]]
-      .concat(st.rows.map((r) => [r.equipment_no, r.description, r.qty, r.on_rent_date || "", $(r.monthly_rent_cents), $(r.tax_cents), $(r.markup_cents), $(r.total_cents)]));
+      .concat(st.rows.map((r) => [r.equipment_no, r.description, r.qty_unknown ? "?" : r.qty, r.on_rent_date || "", $(r.monthly_rent_cents), $(r.tax_cents), $(r.markup_cents), $(r.total_cents)]));
     rows.push(["Total", "", null, "", $(st.total.rent + st.total.liberty_owned), $(st.total.tax), $(st.total.markup), $(st.total.total)]);
     XLSX.utils.book_append_sheet(wb, sheet(rows, { widths: [14, 36, 5, 12, 12, 10, 10, 12], fmt: { 4: money, 5: money, 6: money, 7: money } }), "Statement");
     return wb;

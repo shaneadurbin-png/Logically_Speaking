@@ -11,6 +11,8 @@
      header.required   column names that must all be on one row (the header
                        row is found by scanning the first 25 rows, so a title
                        block above it is fine)
+     header.absent     column names that must NOT be on that row (one vendor's
+                       cut of another of its reports)
      columns           field -> column name; an array means "first that has
                        a value"; every field but equipment_no, contract_no,
                        job_ref and qty is optional. equipment_fallback names
@@ -23,7 +25,11 @@
                        (EquipmentShare's Status = On-rent); the rest are
                        counted and listed, never lost in silence
      as_of             where the report's date comes from: a column, the file
-                       name, or neither (then the person is asked)
+                       name, derived (Date Rented + Number of Days on Rent, the
+                       same on every line), or none of these (the person is asked)
+     unit_by_serial    no quantity column: a line with a serial number is one
+                       unit; a line without is a bulk line whose quantity the
+                       export does not say (shown at its rate, not counted)
      monthly           how a month's rent is read: "monthly" (a monthly figure
                        column), "month_rate", or "fourweek_rate" (x qty) */
 (function (root, factory) {
@@ -57,6 +63,19 @@
       identify: { column: "Customer Name", pattern: /SNB|SUNBELT/i, says: "Sunbelt's account export carries the customer as LIBERTY BUILDS-SNB" },
       as_of: { column: null, name: false }, monthly: "fourweek_rate",
       note: "Sunbelt quotes day, week and 4-week rates; the 4-week rate x quantity is the month's rent. The export does not say its date, so the page asks.",
+    },
+    {
+      layout: "sunbelt_all_jobs", vendor_key: "sunbelt", name: "Sunbelt Rentals - Equipment on Rent - All Jobs (every account, .csv)", confirmed: true,
+      confirmed_from: "Equipment on Rent - All Jobs.csv of 2026-10-02 (773 lines, 10 accounts), checked line by line against the account export of the same day",
+      header: { required: ["Account #", "Contract #", "Job #", "Job_Location", "Job Name", "PO_Number", "Equipment Type", "Cat-Class", "Equipment #", "Serial #", "Day Rate", "Week Rate", "4 Week Rate", "Date Rented", "Number of Days on Rent"],
+        absent: ["Quantity", "Customer Name"] },
+      columns: { equipment_no: "Equipment #", contract_no: "Contract #", job_ref: ["Job Name", "Job #"], job_ref_alt: "Job #",
+        description: "Equipment Type", on_rent_date: "Date Rented", day_rate: "Day Rate", week_rate: "Week Rate", fourweek_rate: "4 Week Rate",
+        po: "PO_Number", est_return: "Est Return Date", account: "Account #", cat_class: "Cat-Class", make: "Make", model: "Model", serial: "Serial #",
+        days_on_rent: "Number of Days on Rent", job_location: "Job_Location" },
+      identify: { column: "Cat-Class", pattern: /^\d{3}-\d{4}$/, says: "Sunbelt's category-class codes read like 012-0317" },
+      unit_by_serial: true, as_of: { column: null, derive: "rented_plus_days", name: true }, monthly: "fourweek_rate",
+      note: "Every Sunbelt account and job in one file, a line per contract line, no Quantity column. A line with a serial number is one unit; a line without (cable, deck panels, mats) may be many, so it shows its 4-week rate and is not counted; the account export carries quantities. The day it ran is Date Rented + Number of Days on Rent, which every line must agree on.",
     },
     {
       layout: "herc", vendor_key: "herc", name: "Herc Rentals - Equipment On Rent Summary (.xlsx)", confirmed: true,
@@ -136,6 +155,7 @@
     for (let i = 0; i < Math.min(rows.length, 25); i++) {
       const cells = (rows[i] || []).map((v) => C.norm(v));
       if (!required.every((h) => cells.includes(h))) continue;
+      if (layout.header.absent && layout.header.absent.some((h) => cells.includes(C.norm(h)))) continue;
       const col = {};
       (rows[i] || []).forEach((v, j) => { const k = C.norm(v); if (k && !(k in col)) col[k] = j; });
       return { rowIndex: i, col };

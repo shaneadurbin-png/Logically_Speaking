@@ -162,15 +162,18 @@
     let stamp = `${doc.vendor_name}, as of ${C.fmtDay(doc.as_of)}: ${doc.totals.lines} on rent, ${C.fmtMoney(doc.totals.rent_cents)} rent a month`;
     if (doc.totals.noMonthly) stamp += ` (${doc.totals.noMonthly} with no monthly figure)`;
     const mapped = Object.keys(byJob).filter((j) => j !== "unmapped");
+    const dayWeek = doc.totals.noMonthly - (doc.totals.qtyUnknown || 0), qu = doc.totals.qtyUnknown || 0;
     Object.assign(card, {
       status: "ready", doc, byJob, stamp,
       title: `${doc.vendor_name} on-rent report, as of ${C.fmtDay(doc.as_of)}`,
       unmapped,
       notes: [].concat(
         doc.vendorKnown ? [] : [`"${doc.vendor_name}" is a new vendor; tax 7% and markup 10% apply until Settings says otherwise`],
-        doc.asOfSource === "name" ? [`as-of taken from the file name`] : [],
+        doc.asOfSource === "name" ? [`as-of taken from the file name`] : doc.asOfSource === "derived" ? [`as-of worked out from Date Rented + Number of Days on Rent; every line agrees`] : [],
+        doc.totals.accounts > 1 ? [`${doc.totals.accounts} accounts in one file`] : [],
         doc.totals.repeats ? [`${doc.totals.repeats} identit${doc.totals.repeats > 1 ? "ies" : "y"} repeat${doc.totals.repeats > 1 ? "" : "s"} (non-serialised items, one line per unit); each line is numbered`] : [],
-        doc.totals.noMonthly ? [`${doc.totals.noMonthly} line${doc.totals.noMonthly > 1 ? "s" : ""} carr${doc.totals.noMonthly > 1 ? "y" : "ies"} only a day or week rate; shown, not counted in the month`] : [],
+        dayWeek ? [`${dayWeek} line${dayWeek > 1 ? "s" : ""} carr${dayWeek > 1 ? "y" : "ies"} only a day or week rate; shown, not counted in the month`] : [],
+        qu ? [`${qu} line${qu > 1 ? "s" : ""} carr${qu > 1 ? "y" : "ies"} no quantity: this export has no Quantity column and the line has no serial number, so it may be many units; shown at the unit rate, not counted in the month (Sunbelt's account export carries quantities)`] : [],
         doc.totals.noUnit ? [`${doc.totals.noUnit} bulk line${doc.totals.noUnit > 1 ? "s" : ""} (no unit number) identified by category-class code`] : [],
         Object.keys(doc.totals.notCounted || {}).length ? [Object.entries(doc.totals.notCounted).map(([k, n]) => `${n} row${n > 1 ? "s" : ""} with status "${k}"`).join(", ") + " not on rent, listed and not counted"] : [],
         mapped.length ? [`${C.fmtMoney(billed)} a month to the client across ${mapped.length} job${mapped.length > 1 ? "s" : ""} (${mapped.join(", ")})`] : [],

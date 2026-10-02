@@ -63,6 +63,32 @@ check("Sunbelt: repeated identity numbered, PO and dates carried", () => {
 check("Sunbelt: the columns with another customer's name refuse", () =>
   refuses(() => OnRent.read(bytes("bad/sunbelt_other_customer.csv"), "sunbelt_other_customer.csv", { as_of: "2026-10-01" }), /Customer Name column reads "ACME CO"/));
 
+// ---- Sunbelt's all-jobs export ----------------------------------------------------
+const sa = OnRent.read(bytes(X.sunbelt_all.file), X.sunbelt_all.file);
+check("Sunbelt all jobs: its own layout (no Quantity, no Customer Name), the vendor by its codes, the day from Date Rented + days on rent", () => {
+  eq(sa.layout, X.sunbelt_all.layout); eq(sa.vendor_key, X.sunbelt_all.vendor_key); ok(sa.vendorKnown);
+  eq(sa.as_of, X.sunbelt_all.as_of); eq(sa.asOfSource, "derived"); eq(sa.totals.accounts, X.sunbelt_all.accounts);
+});
+check("Sunbelt all jobs: a serial number is one unit; a bulk line without one shows its rate and is not counted; $0 stays $0", () => {
+  eq(sa.totals.lines, X.sunbelt_all.lines); eq(sa.totals.rent_cents, X.sunbelt_all.rent_cents); eq(sa.totals.noMonthly, X.sunbelt_all.noMonthly); eq(sa.totals.qtyUnknown, X.sunbelt_all.qtyUnknown);
+  eq(sa.lines.map((l) => l.monthly_rent_cents), X.sunbelt_all.monthly); eq(sa.lines.map((l) => l.equipment_no), X.sunbelt_all.equipment);
+  eq(sa.lines.every((l) => l.qty === 1), true); eq(sa.lines.map((l) => !!l.raw.qty_unknown), [false, false, true, true, true, true, false, false], "every line without a serial says its quantity is unknown; only the ones with a rate are left uncounted");
+  eq(sa.lines[2].rate_period, "4week"); eq(sa.lines[2].rate_cents, 10000); eq(sa.lines[2].fourweek_rate_cents, 10000);
+});
+check("Sunbelt all jobs: repeats numbered, job names, PO, location and days carried", () => {
+  eq(sa.lines.map((l) => l.seq), X.sunbelt_all.seqs); eq(sa.totals.repeats, X.sunbelt_all.repeats); eq(sa.totals.jobRefs, X.sunbelt_all.jobRefs);
+  eq(sa.lines[0].po, "7050984"); eq(sa.lines[0].on_rent_date, "2025-08-20"); eq(sa.lines[0].raw.days_on_rent, 408); eq(sa.lines[0].raw.account, "550106");
+  eq(sa.lines[0].raw.job_location, "1 HARBORSIDE DR, BOSTON"); eq(sa.lines[0].raw.job_ref_alt, "01821"); eq(sa.lines[0].raw.serial, "LE980LEDV-T-487617"); eq(sa.lines[0].raw.cat_class, "012-0317");
+});
+check("Sunbelt all jobs: lines that disagree on the day make the card ask; a given day wins", () => {
+  const e = refuses(() => OnRent.read(bytes("bad/sunbelt_all_jobs_days_disagree.csv"), "sunbelt_all_jobs_days_disagree.csv"), /lands on 2 different days: 2026-10-01, 2026-10-02/);
+  ok(e instanceof C.NeedsDecision); eq(e.need, "as_of");
+  eq(OnRent.read(bytes("bad/sunbelt_all_jobs_days_disagree.csv"), "sunbelt_all_jobs_days_disagree.csv", { as_of: "2026-10-02" }).asOfSource, "given");
+});
+check("Sunbelt all jobs: the columns with codes that are not Sunbelt's refuse", () =>
+  refuses(() => OnRent.read(bytes("bad/sunbelt_all_jobs_other_codes.csv"), "sunbelt_all_jobs_other_codes.csv"), /Cat-Class column reads "X-1"/));
+check("Sunbelt all jobs: the account export still reads as the account export (its Quantity column counts)", () => eq(snb.layout, "sunbelt"));
+
 // ---- Herc's summary -------------------------------------------------------------
 const herc = OnRent.read(bytes(X.herc.file), X.herc.file);
 check("Herc: header on row 4, Totals row skipped, Report Date is the as-of", () => {
@@ -120,8 +146,8 @@ check("asks: generic with no as-of anywhere", () => {
   ok(e instanceof C.NeedsDecision); eq(e.need, "as_of");
 });
 check("refuses: a rate period it does not know", () => refuses(() => OnRent.read(bytes("bad/bad_period_2026-09-26.csv"), "bad_period_2026-09-26.csv"), /Rate Period "Fortnightly"/));
-check("registry: five confirmed layouts, one awaiting; every confirmed one says what it was confirmed from", () => {
-  eq(V.confirmed().map((l) => l.layout), ["generic", "sunbelt", "herc", "united_rentals", "equipmentshare"]);
+check("registry: six confirmed layouts, one awaiting; every confirmed one says what it was confirmed from", () => {
+  eq(V.confirmed().map((l) => l.layout), ["generic", "sunbelt", "sunbelt_all_jobs", "herc", "united_rentals", "equipmentshare"]);
   eq(V.awaiting().map((l) => l.layout), ["mcw"]);
   ok(V.confirmed().every((l) => l.confirmed_from));
   eq(V.vendorFromName("UNITED RENTALS").vendor_key, "united_rentals"); eq(V.vendorFromName("T3").vendor_key, "equipmentshare"); eq(V.vendorFromName("SNB").vendor_key, "sunbelt");

@@ -41,7 +41,7 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   const files = [
     F("rates/Sage_Rate_Tables_2026.xlsx"), F("projects/Projects.xlsx"),
     F("hh2/LaborDetails_9_1_2026_to_9_30_2026.xlsx"),
-    F("onrent/sunbelt_2026-09-19.csv"), F("onrent/sunbelt_2026-09-26.csv"), F("onrent/sunbelt_account_export.csv"),
+    F("onrent/sunbelt_2026-09-19.csv"), F("onrent/sunbelt_2026-09-26.csv"), F("onrent/sunbelt_account_export.csv"), F("onrent/Equipment on Rent - All Jobs.csv"),
     F("onrent/Equipment_On_Rent_Summary-06-24-2026_175716.xlsx"), F("onrent/Equipment_On_Rent_-_All_Jobs_2026-09-26-08.00.00.xlsx"),
     F("onrent/EquipShare_rentals-export_9.4.26.csv"), F("onrent/mcw_2026-09-26.csv"),
     F("purchases/Tbl_PO1_2026-09-25.xlsx"), F("jctd/CDR_DC4_9-29-26.xlsx"), F("site/Equipment_On_Rent_-_All_Jobs_2026-09-27-08.00.00.xlsx"), F("site/CDR_DC5_9-29-26.xlsx"),
@@ -52,7 +52,8 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   const cards = await page.$$eval(".filecard", (els) => els.map((e) => ({ status: Array.from(e.classList).find((c) => ["ready", "needs-decision", "refused", "already-on-file", "recorded", "skipped"].includes(c)), title: e.querySelector("b").textContent, stamp: (e.querySelector(".stamp") || {}).textContent || "", reason: (e.querySelector("p") || {}).textContent || "" })));
   for (const c of cards) console.log(`    [${c.status}] ${c.title} :: ${c.stamp} ${c.reason.slice(0, 110)}`);
   const by = (s) => cards.filter((c) => c.status === s).length;
-  check(by("ready") === 13, `13 cards ready (got ${by("ready")})`);
+  check(by("ready") === 14, `14 cards ready (got ${by("ready")})`);
+  check(cards.some((c) => c.title === "Sunbelt Rentals on-rent report, as of Oct 2, 2026" && /8 on rent/.test(c.stamp)), "Sunbelt's all-jobs export reads, dated from its own lines");
   check(cards.some((c) => c.title.startsWith("Job Cost To Date, DC4") && /6 recurring charges \(3 off feed\)/.test(c.stamp)), "the JCTD card counts the recurring charges it found");
   check(by("needs-decision") === 1, "Sunbelt account export asks for its as-of date");
   check(by("refused") === 1, "the bad HH2 file is refused, with the column that is wrong");
@@ -63,14 +64,14 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   await page.fill("form.asof input[name=as_of]", "2026-09-26");
   await page.click("form.asof button");
   await page.waitForFunction(() => !document.querySelector("form.asof"));
-  check((await page.$$(".filecard.ready")).length === 14, "answering the as-of makes 14 ready");
+  check((await page.$$(".filecard.ready")).length === 15, "answering the as-of makes 15 ready");
 
   // ---- Record ----------------------------------------------------------------------
   await page.click("#record");
   await page.waitForFunction(() => document.querySelectorAll(".filecard.ready").length === 0 && !document.body.textContent.includes("Recording…"), null, { timeout: 60000 });
   const after = await page.$$eval(".filecard", (els) => els.map((e) => ({ status: Array.from(e.classList).find((c) => ["ready", "needs-decision", "refused", "already-on-file", "recorded"].includes(c)), title: e.querySelector("b").textContent, reason: (e.querySelector("p") || {}).textContent || "" })));
   for (const c of after) console.log(`    [${c.status}] ${c.title} :: ${c.reason.slice(0, 120)}`);
-  check(after.filter((c) => c.status === "recorded").length === 14, "14 files recorded");
+  check(after.filter((c) => c.status === "recorded").length === 15, "15 files recorded");
   check(after.some((c) => c.title.startsWith("Sage rate tables") && /rates added/.test(c.reason) && /Newly assigned: 110 #224050/.test(c.reason)), "the Sage card says how many rates were added and that the register's new job got its table");
   check((await text("header.top")).includes("HH2 through"), "the header chips refresh after Record");
   await shot("03-update-recorded");
