@@ -41,19 +41,38 @@
     const ctx = () => ({ rates: S.billable_rates, employees: Object.fromEntries(S.employees.map((e) => [e.employee_number, e])), prefixes: L.prefixMap(S.prefix_classes), policy: Object.fromEntries(S.pay_type_policy.map((p) => [p.pay_type_name, p.policy])), jobs: S.jobs });
     const jobMap = () => { const m = {}; for (const x of S.vendor_job_map) (m[x.vendor_key] = m[x.vendor_key] || {})[x.vendor_job_ref] = x.job_number; return m; };
     const rentalSettings = () => ({ vendors: Object.fromEntries(S.vendors.map((v) => [v.vendor_key, v])), jobs: Object.fromEntries(S.jobs.map((j) => [j.job_number, j])) });
-    const priced = () => L.price(S.labor.filter((r) => live().some((u) => u.id === r.upload_id)), ctx());
+    const priced = () => L.price(S.labor.filter((r) => live().some((u) => u.id === r.upload_id)), ctx()).map((r) => {
+      const job_number = resolveJob(r.job_number);
+      return job_number === r.job_number ? r : Object.assign({}, r, { job_number });
+    });
     const liveSnaps = () => S.snapshots.filter((s) => live().some((u) => u.id === s.upload_id));
     const latestPo = () => { const ups = live().filter((u) => u.kind === "purchase_orders").sort((a, b) => (a.as_of < b.as_of ? 1 : -1)); return ups.length ? S.poExports.find((p) => p.upload_id === ups[0].id) : null; };
     const monthsSpanned = () => { const ms = new Set(); const now = C.monthOf(C.todayIso()); for (const s of liveSnaps()) { let m = C.monthOf(C.addDays(s.as_of, -R.GRACE_DAYS)); while (m <= now) { ms.add(m); m = C.monthOf(C.addDays(C.monthEnd(m), 1)); } } for (const r of S.labor) ms.add(C.monthOf(r.work_date)); const po = latestPo(); if (po) for (const p of po.pos) ms.add(C.monthOf(p.order_date)); return [...ms].sort(); };
     const filt = (rows, f) => rows.filter((r) => Object.entries(f).every(([k, v]) => Array.isArray(v) ? v.includes(r[k]) : r[k] === v));
     const jobKnown = (n) => S.jobs.some((j) => j.job_number === n);
+    // A saved vendor map wins. Otherwise a job number or a vendor job name that is one project is that project. Anything else stays unmatched.
+    const resolveJob = (n) => {
+      if (n == null || n === "") return n;
+      if (jobKnown(n)) return n;
+      return P.jobForVendorRef(String(n), S.jobs) || n;
+    };
+    const jobForRef = (vendor_key, ref) => {
+      const saved = (jobMap()[vendor_key] || {})[ref];
+      if (saved) return saved;
+      return P.jobForVendorRef(ref, S.jobs) || null;
+    };
+    const mapFor = (vendor_key, lines) => {
+      const m = Object.assign({}, jobMap()[vendor_key] || {});
+      for (const l of lines || []) if (!m[l.vendor_job_ref]) { const hit = P.jobForVendorRef(l.vendor_job_ref, S.jobs); if (hit) m[l.vendor_job_ref] = hit; }
+      return m;
+    };
     const rentalMonth = () => {
-      const out = [], jm = jobMap(), rs = rentalSettings(), byVendor = {};
+      const out = [], rs = rentalSettings(), byVendor = {};
       for (const s of liveSnaps()) (byVendor[s.vendor_key] = byVendor[s.vendor_key] || []).push(s);
       for (const [vendor_key, snaps] of Object.entries(byVendor)) for (const month of monthsSpanned()) {
         const s = R.snapshotForMonth(snaps, month);
         if (!s) continue;
-        for (const j of Object.values(R.monthCost(s, rs, jm[vendor_key] || {}))) out.push({ workspace_id: WS, vendor_key, month: month + "-01", snapshot_id: s.id, as_of: s.as_of, job_number: j.job_number, lines: j.lines, no_monthly: j.noMonthly, rent_cents: j.rent, liberty_owned_cents: j.liberty_owned_rent, tax_cents: j.tax, markup_cents: j.markup, total_cents: j.total, taxable: j.settings.taxable, tax_bp: j.settings.tax_bp, markup_bp: j.settings.markup_bp, markup_base: j.settings.markup_base });
+        for (const j of Object.values(R.monthCost(s, rs, mapFor(vendor_key, s.lines)))) out.push({ workspace_id: WS, vendor_key, month: month + "-01", snapshot_id: s.id, as_of: s.as_of, job_number: j.job_number, lines: j.lines, no_monthly: j.noMonthly, rent_cents: j.rent, liberty_owned_cents: j.liberty_owned_rent, tax_cents: j.tax, markup_cents: j.markup, total_cents: j.total, taxable: j.settings.taxable, tax_bp: j.settings.tax_bp, markup_bp: j.settings.markup_bp, markup_base: j.settings.markup_base });
       }
       return out;
     };
@@ -61,7 +80,7 @@
     // ... and about one ORDER: it carries by number and OrderID, so a number shared by two orders is decided one order at a time
     const decisionFor = (po_number, order_id) => S.purchase_decisions.filter((x) => x.doc_number === po_number && (x.order_id || "") === (order_id || "") && x.line_id == null).sort((a, b) => (a.decided_at < b.decided_at ? 1 : a.decided_at > b.decided_at ? -1 : b.id - a.id))[0] || null;
     const purchaseDocs = () => { const po = latestPo(); if (!po) return []; const byNumber = {}; for (const p of po.pos) byNumber[p.po_number] = (byNumber[p.po_number] || 0) + 1;
-      return po.pos.map((p) => { const dd = decisionFor(p.po_number, p.order_id); const job_number = (dd && dd.job_number) || p.job_number, bucket = (dd && dd.bucket) || p.bucket, known = jobKnown(job_number), shared = byNumber[p.po_number];
+      return po.pos.map((p) => { const dd = decisionFor(p.po_number, p.order_id); const job_number = resolveJob((dd && dd.job_number) || p.job_number), bucket = (dd && dd.bucket) || p.bucket, known = jobKnown(job_number), shared = byNumber[p.po_number];
       const status = p.cancelled || p.quote ? "excluded" : dd && dd.decision === "exclude" ? "excluded" : p.committed_cents == null ? "needs_decision" : dd && (dd.decision === "assign" || dd.decision === "confirm") ? "confirmed" : shared > 1 ? "needs_decision" : !known ? "needs_decision" : "auto";
       return { id: po.upload_id + ":" + p.po_number + ":" + (p.order_id || "") + ":" + p.row_index, workspace_id: WS, upload_id: po.upload_id, source: "drop", direction: "cost", vendor_key: p.supplier_code, vendor_name_raw: p.supplier_name, doc_kind: "purchase_order", doc_number: p.po_number, doc_date: p.order_date, description: p.description, order_type: p.order_type, cancelled: p.cancelled, quote: p.quote, total_cents: p.committed_cents, job_number, cost_code: null, bucket, job_known: known, status, shared_number: shared, order_id: p.order_id || null }; }); };
     // the latest recorded JCTD per job stands for all of it
@@ -71,8 +90,8 @@
     const recurringCandidates = () => Rec.candidates(liveJctd(), { onFeed, exclude: isWaste }).filter((c) => !S.recurring_charges.some((r) => r.job_number === c.job_number && r.candidate_key === c.key) && !S.recurring_dismissals.some((d) => d.job_number === c.job_number && d.candidate_key === c.key)).map((c) => Object.assign({ workspace_id: WS }, c));
     const recurringMonth = () => { const out = [], now = C.monthOf(C.todayIso()); for (const r of S.recurring_charges) { const job = S.jobs.find((j) => j.job_number === r.job_number); let m = C.monthOf(r.start_month); const end = r.end_month ? C.monthOf(r.end_month) : now; while (m <= end && m <= now) { const c = Rec.monthCost(r, job); out.push({ workspace_id: WS, job_number: r.job_number, month: m + "-01", charge_id: r.id, candidate_key: r.candidate_key, vendor_code: r.vendor_code, vendor_name: r.vendor_name, description: r.description, cost_code: r.cost_code, units: r.units, liberty_owned: r.liberty_owned, amount_includes_tax: r.amount_includes_tax, start_month: r.start_month, end_month: r.end_month, source: r.source, rent_cents: c.rent, tax_cents: c.tax, markup_cents: c.markup, total_cents: c.total }); m = C.monthOf(C.addDays(C.monthEnd(m), 1)); } } return out; };
     // the lines of the snapshot that stands for each vendor and month, with their job: what the site-services views read
-    const rentalMonthLines = () => { const out = [], jm = jobMap(), byVendor = {}; for (const s of liveSnaps()) (byVendor[s.vendor_key] = byVendor[s.vendor_key] || []).push(s);
-      for (const [vendor_key, snaps] of Object.entries(byVendor)) for (const month of monthsSpanned()) { const s = R.snapshotForMonth(snaps, month); if (!s) continue; for (const l of s.lines) out.push(Object.assign({ workspace_id: WS, vendor_key, month: month + "-01", as_of: s.as_of, job_number: (jm[vendor_key] || {})[l.vendor_job_ref] || "unmapped" }, l)); }
+    const rentalMonthLines = () => { const out = [], byVendor = {}; for (const s of liveSnaps()) (byVendor[s.vendor_key] = byVendor[s.vendor_key] || []).push(s);
+      for (const [vendor_key, snaps] of Object.entries(byVendor)) for (const month of monthsSpanned()) { const s = R.snapshotForMonth(snaps, month); if (!s) continue; for (const l of s.lines) out.push(Object.assign({ workspace_id: WS, vendor_key, month: month + "-01", as_of: s.as_of, job_number: jobForRef(vendor_key, l.vendor_job_ref) || "unmapped" }, l)); }
       return out; };
     const byJobMonthVendor = (lines) => { const g = {}; for (const l of lines) { const k = [l.job_number, l.month, l.vendor_key].join("|"); (g[k] = g[k] || []).push(l); } return g; };
     const siteServicesMonth = () => { const out = []; for (const [k, ls] of Object.entries(byJobMonthVendor(rentalMonthLines()))) { const [job_number, month, vendor_key] = k.split("|"); for (const r of SS.viewRows(ls)) out.push(Object.assign({ workspace_id: WS, job_number, month, vendor_key }, r)); } return out; };
@@ -88,7 +107,7 @@
       v_labor_class_month: () => { const m = {}; for (const r of priced()) { const k = [r.job_number, C.monthOf(r.work_date), r.certified_class, r.pay_type, r.status].join("|"); const g = m[k] || (m[k] = { workspace_id: WS, job_number: r.job_number, month: C.monthOf(r.work_date) + "-01", certified_class: r.certified_class, pay_id: r.pay_type, pay_type_name: r.pay_type_name, status: r.status, rows_n: 0, hours: 0, cost_cents: 0, rate_cents: r.rate_cents }); g.rows_n++; g.hours += r.hours_x100 / 100; g.cost_cents += r.cost_cents || 0; } return Object.values(m); },
       v_labor_held: () => { const m = {}; for (const r of priced()) if (r.status.startsWith("held:")) { const k = [r.job_number, r.status, r.certified_class, r.pay_type, r.employee_number].join("|"); const g = m[k] || (m[k] = { workspace_id: WS, job_number: r.job_number, job_name: r.job_name, rate_table_code: r.rate_table_code, status: r.status, certified_class: r.certified_class, pay_id: r.pay_type, pay_type_name: r.pay_type_name, employee_number: r.employee_number, rows_n: 0, hours: 0, first_day: r.work_date, last_day: r.work_date }); g.rows_n++; g.hours += r.hours_x100 / 100; if (r.work_date < g.first_day) g.first_day = r.work_date; if (r.work_date > g.last_day) g.last_day = r.work_date; } return Object.values(m); },
       v_rental_month: rentalMonth,
-      v_rental_items: () => { const jm = jobMap(), items = {}; const snaps = liveSnaps().slice().sort((a, b) => (a.as_of < b.as_of ? -1 : 1)); for (const s of snaps) for (const l of s.lines) { const k = R.identity(s.vendor_key, l); const it = items[k] || (items[k] = { workspace_id: WS, vendor_key: s.vendor_key, equipment_no: l.equipment_no, contract_no: l.contract_no, vendor_job_ref: l.vendor_job_ref, seq: l.seq || 1, first_seen: s.as_of, last_seen: s.as_of, snapshots: 0, job_number: (jm[s.vendor_key] || {})[l.vendor_job_ref] || null, off_rent_date: null }); it.snapshots++; it.last_seen = s.as_of; Object.assign(it, { description: l.description, qty: l.qty, on_rent_date: l.on_rent_date, rate_period: l.rate_period, rate_cents: l.rate_cents, monthly_rent_cents: l.monthly_rent_cents, liberty_owned: l.liberty_owned, po: l.po, line_ref: l.line_ref, raw: l.raw }); } for (const it of Object.values(items)) { const later = snaps.filter((s) => s.vendor_key === it.vendor_key && s.as_of > it.last_seen); if (later.length) it.off_rent_date = later[0].as_of; } return Object.values(items); },
+      v_rental_items: () => { const items = {}; const snaps = liveSnaps().slice().sort((a, b) => (a.as_of < b.as_of ? -1 : 1)); for (const s of snaps) for (const l of s.lines) { const k = R.identity(s.vendor_key, l); const it = items[k] || (items[k] = { workspace_id: WS, vendor_key: s.vendor_key, equipment_no: l.equipment_no, contract_no: l.contract_no, vendor_job_ref: l.vendor_job_ref, seq: l.seq || 1, first_seen: s.as_of, last_seen: s.as_of, snapshots: 0, job_number: jobForRef(s.vendor_key, l.vendor_job_ref) || null, off_rent_date: null }); it.snapshots++; it.last_seen = s.as_of; Object.assign(it, { description: l.description, qty: l.qty, on_rent_date: l.on_rent_date, rate_period: l.rate_period, rate_cents: l.rate_cents, monthly_rent_cents: l.monthly_rent_cents, liberty_owned: l.liberty_owned, po: l.po, line_ref: l.line_ref, raw: l.raw }); } for (const it of Object.values(items)) { const later = snaps.filter((s) => s.vendor_key === it.vendor_key && s.as_of > it.last_seen); if (later.length) it.off_rent_date = later[0].as_of; } return Object.values(items); },
       v_purchase_docs: purchaseDocs,
       v_purchase_month: () => { const m = {}; for (const d of purchaseDocs()) { const k = [d.job_number, C.monthOf(d.doc_date), d.bucket, d.status, d.order_type].join("|"); const g = m[k] || (m[k] = { workspace_id: WS, job_number: d.job_number, month: C.monthOf(d.doc_date) + "-01", bucket: d.bucket, status: d.status, direction: "cost", order_type: d.order_type, lines: 0, amount_cents: 0 }); g.lines++; g.amount_cents += d.total_cents || 0; } return Object.values(m); },
       v_job_month: () => { const m = {}; const g = (job, month) => m[job + "|" + month] || (m[job + "|" + month] = { workspace_id: WS, job_number: job, month, labor_cents: 0, labor_hours: 0, labor_held_hours: 0, labor_held_rows: 0, labor_through: null, rental_cents: 0, rental_lo_cents: 0, rental_lines: 0, rental_no_monthly: 0, rental_as_of: null, offfeed_cents: 0, offfeed_lines: 0, purchase_cents: 0, purchase_rental_cents: 0, purchase_nb_cents: 0, pending_cents: 0, pending_lines: 0, total_cents: 0 });

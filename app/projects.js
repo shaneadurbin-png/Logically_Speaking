@@ -155,5 +155,70 @@ const REGISTER_ROWS = [
     }
     return { jobs, added, filled };
   }
-  return { REQUIRED, CAMPUS_TAX_BP, REGISTER, taxFor, alignCampus, mergeInto, looksLike, readWorkbook, read };
+  const CAMPUS_CODES = ["PHL", "SBN", "IAD", "PDX", "DFW", "LCK", "CMH", "CDR", "AUS", "BWI"];
+  function tokensOf(s) {
+    return String(s || "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim().split(/\s+/).filter(Boolean);
+  }
+  function hasPhrase(hay, phrase) {
+    if (!phrase.length || phrase.length > hay.length) return false;
+    for (let i = 0; i + phrase.length <= hay.length; i++) {
+      let same = true;
+      for (let j = 0; j < phrase.length; j++) if (hay[i + j] !== phrase[j]) { same = false; break; }
+      if (same) return true;
+    }
+    return false;
+  }
+  function campusToken(raw) {
+    const compact = String(raw || "").toUpperCase().replace(/[^A-Z0-9]+/g, "");
+    if (compact === "CDRE1") return "CDR";
+    if (compact === "DFW2") return "DFW";
+    if (CAMPUS_CODES.includes(compact)) return compact;
+    const folded = String(alignCampus(raw) || "").toUpperCase().replace(/[^A-Z0-9]+/g, "");
+    if (folded === "CDRE1") return "CDR";
+    if (folded === "DFW2") return "DFW";
+    return CAMPUS_CODES.includes(folded) ? folded : "";
+  }
+  /**
+   * A vendor's name for a job, when that name is one project.
+   * A saved vendor_job_map row wins over this. A name that fits two
+   * projects (DC4 on two campuses, or "SBN 201-204") returns null.
+   * Those dollars stay unmatched. They are not given to CDR.
+   */
+  function jobForVendorRef(ref, jobs) {
+    const raw = String(ref || "").trim();
+    if (!raw || raw === "(no job named)" || raw.toLowerCase() === "unmapped") return null;
+    const list = jobs || [];
+    const hay = tokensOf(raw);
+    if (!hay.length) return null;
+    const nums = raw.match(/\d{2}-\d{2}-\d{6}/g) || [];
+    if (nums.length) {
+      const byNum = list.filter((j) => nums.includes(j.job_number));
+      return byNum.length === 1 ? byNum[0].job_number : null;
+    }
+    const joined = hay.join(" ");
+    const exact = list.filter((j) => {
+      const sn = tokensOf(j.short_name).join(" ");
+      const nm = tokensOf(j.name).join(" ");
+      return (sn && sn === joined) || (nm && nm !== sn && nm === joined);
+    });
+    if (exact.length === 1) return exact[0].job_number;
+    if (exact.length > 1) return null;
+    const hits = [];
+    for (const j of list) {
+      const sn = tokensOf(j.short_name);
+      if (sn.length === 1 && sn[0].length < 2) continue;
+      if (sn.length && hasPhrase(hay, sn)) hits.push(j);
+    }
+    if (!hits.length) return null;
+    hits.sort((a, b) => tokensOf(b.short_name).length - tokensOf(a.short_name).length || tokensOf(b.short_name).join(" ").length - tokensOf(a.short_name).join(" ").length);
+    const bestN = tokensOf(hits[0].short_name).length;
+    const bestL = tokensOf(hits[0].short_name).join(" ").length;
+    const top = hits.filter((j) => tokensOf(j.short_name).length === bestN && tokensOf(j.short_name).join(" ").length === bestL);
+    const narrowed = top.length === 1 ? top : top.filter((j) => {
+      const code = campusToken(j.campus);
+      return code && hasPhrase(hay, [code]);
+    });
+    return narrowed.length === 1 ? narrowed[0].job_number : null;
+  }
+  return { REQUIRED, CAMPUS_TAX_BP, REGISTER, taxFor, alignCampus, mergeInto, looksLike, readWorkbook, read, jobForVendorRef };
 }));

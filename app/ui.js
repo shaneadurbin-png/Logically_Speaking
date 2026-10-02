@@ -16,7 +16,7 @@
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig, PM = root.PortfolioMap, Pages = root.Pages;
-  const RELEASE = "0.1.19";
+  const RELEASE = "0.1.20";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -137,9 +137,9 @@
     const chip = (cls, text) => html`<span class="chip ${cls}"><span class="dot"></span>${text}</span>`;
     const nav = (p, label, on) => html`<a href="${p === "" ? (opts.home || "#/") : `#/${p}`}" class="${on ? "on" : ""}">${label}</a>`;
     const session = opts.mode === "demo" ? chip("demo", "Demo: nothing is saved") : html`<span class="chip">${opts.user && opts.user.email ? opts.user.email : ""} · ${opts.role || ""}</span>`;
-    return html`<header class="top"><span class="brand">GR Cost</span>
-      <nav>${nav("", "Portfolio", portOn)}${nav("review", "Review", page === "review")}${opts.canEdit ? nav("update", "Update", page === "update") : ""}${nav("settings", "Settings", page === "settings")}</nav>
-      <span class="spacer"></span>
+    const mark = raw(`<svg viewBox="100 106 80 80" aria-hidden="true"><g stroke="#0f1822" stroke-width="3" stroke-linejoin="round" paint-order="stroke"><g fill="#d6d6d4"><rect x="112" y="115" width="7" height="9" rx="1.5"/><rect x="119" y="112" width="44" height="14" rx="3"/><rect x="161" y="109" width="12" height="20" rx="2"/><rect x="129" y="124" width="18" height="8"/><rect x="121" y="131" width="34" height="6" rx="1.5"/></g><path d="M131 137 L117 182 M138 137 L138 182 M145 137 L159 182" stroke="#cfd0d1" stroke-width="5" stroke-linecap="round"/></g><circle cx="176" cy="118" r="3" fill="#eef6fd"/></svg>`);
+    return html`<header class="top"><a class="brand" href="${opts.home || "#/"}"><b>${mark}</b><span>GR Cost</span></a>
+      <nav aria-label="Pages">${nav("", "Portfolio", portOn)}${nav("review", "Review", page === "review")}${opts.canEdit ? nav("update", "Update", page === "update") : ""}${nav("settings", "Settings", page === "settings")}</nav>
       ${session}
     </header>`;
   }
