@@ -92,6 +92,18 @@
       rr.push(["Total", "", null, $(d.recurring.reduce((t, r) => t + r.rent_cents, 0)), $(d.recurring.reduce((t, r) => t + r.tax_cents, 0)), $(d.recurring.reduce((t, r) => t + r.markup_cents, 0)), $(recur), "", "", ""]);
       XLSX.utils.book_append_sheet(wb, sheet(rr, { widths: [28, 30, 6, 12, 10, 10, 12, 9, 9, 8], fmt: { 3: money, 4: money, 5: money, 6: money } }), "Recurring rentals");
     }
+    if (d.site && (d.site.counts.classified || (d.site.dump || []).length || (d.site.pulls || []).length)) {
+      const c = d.site.counts, r = c.restrooms;
+      const rows = [["Site services", C.fmtMonth(d.month)], [], ["What", "Count", "Detail"],
+        ["Restrooms", r.units, d.site.restroomLine || ""], ["Restroom trailers, static units, containers", r.trailers + r.static + r.containers, r.stations ? `${r.stations} stations` : ""],
+        ["Sinks", r.sinks, ""], ["Holding tanks", r.holding_tanks, ""], ["Serviced", r.service_per_week ? `${r.service_per_week}x weekly` : "", ""],
+        ["Trailers (buildings)", c.trailers.buildings, d.site.trailerLabel || ""], ["Storage containers", c.storage.container_units, Object.entries(c.storage.containers).map(([k, n]) => `${n} x ${k}`).join(", ")],
+        ["Roll-offs on the rental reports", c.dumpsters.units, ""], [],
+        ["Dumpsters: hauler", "Pulls", "Source", "Ledger lines", "Ledger spend", "Log cost"]]
+        .concat((d.site.dump || []).map((x) => [x.vendor_name, x.pulls == null ? "" : x.pulls, x.source, x.ledger_lines, $(x.ledger_cents), $(x.log_cost_cents)]))
+        .concat([[], ["Pull log: date", "Hauler", "Size yd", "Pulls", "Ticket", "Tons", "Cost", "Note"]], (d.site.pulls || []).map((p) => [p.pull_date, p.vendor_name, p.container_yd || "", p.pulls, p.ticket_no || "", p.tonnage || "", $(p.cost_cents), p.note || ""]));
+      XLSX.utils.book_append_sheet(wb, sheet(rows, { widths: [34, 10, 60, 12, 14, 12, 12, 30], fmt: { 4: money, 5: money, 6: money } }), "Site services");
+    }
     const p = [["Vendor", "Document", "Date", "Description", "Cost code", "Bucket", "Amount", "Status"]]
       .concat((d.purchases || []).map((x) => [x.vendor || "", x.doc_number || "", x.doc_date || "", x.description || "", x.cost_code || "", x.bucket || "", $(x.amount_cents), x.status]));
     XLSX.utils.book_append_sheet(wb, sheet(p, { widths: [22, 14, 12, 40, 12, 14, 12, 14], fmt: { 6: money } }), "Purchases");

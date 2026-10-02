@@ -11,7 +11,7 @@
      #/settings         Settings - jobs, vendors, their job names, rate tables, employees, pay types, people, files */
 (function (root) {
   "use strict";
-  const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, V = root.OnRentVendors,
+  const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig;
   const RELEASE = "0.1.0";
 
@@ -95,16 +95,16 @@
   // ---- shared data ------------------------------------------------------------------------
   async function loadSettings() {
     const db = st.db;
-    const [jobs, vendors, map, tables, rates, employees, policy, members] = await Promise.all([
+    const [jobs, vendors, map, tables, rates, employees, policy, members, wasteVendors] = await Promise.all([
       db.view("jobs", {}, { order: "job_number" }), db.view("vendors", {}, { order: "vendor_key" }), db.view("vendor_job_map"),
       db.view("rate_tables", {}, { order: "code" }), db.view("billable_rates"),
-      db.canEdit() ? db.view("employees") : Promise.resolve([]), db.view("pay_type_policy"), db.view("members").catch(() => [])]);
+      db.canEdit() ? db.view("employees") : Promise.resolve([]), db.view("pay_type_policy"), db.view("members").catch(() => []), db.view("waste_vendors").catch(() => [])]);
     const jobMap = {};
     for (const m of map) (jobMap[m.vendor_key] = jobMap[m.vendor_key] || {})[m.vendor_job_ref] = m.job_number;
     const live = rates.filter((r) => !r.retired_at).map((r) => Object.assign({}, r, r.effective && !r.effective_from ? rangeOf(r.effective) : {}));
     const jobByNumber = Object.fromEntries(jobs.map((j) => [j.job_number, j]));
     const vendorByKey = Object.fromEntries(vendors.map((v) => [v.vendor_key, v]));
-    return { jobs, vendors, jobMap, tables, rates: live, allRates: rates, employees, policy, members, jobByNumber, vendorByKey,
+    return { jobs, vendors, jobMap, tables, rates: live, allRates: rates, employees, policy, members, wasteVendors, jobByNumber, vendorByKey,
       // the shape rentals_model.settingsFor reads: tax and markup are the job's, taxable is the vendor's
       rental: { vendors: vendorByKey, jobs: jobByNumber } };
   }
@@ -116,7 +116,7 @@
   const intakeCtx = () => ({
     labor: { rates: st.settings.rates, employees: Object.fromEntries(st.settings.employees.map((e) => [e.employee_number, e])),
       policy: Object.fromEntries(st.settings.policy.map((p) => [p.pay_type_name, p.policy])), jobs: st.settings.jobs },
-    vendorSettings: st.settings.rental, jobMap: st.settings.jobMap, existing: (sha) => st.db.existing(sha), asOf: st.asOf || {},
+    vendorSettings: st.settings.rental, jobMap: st.settings.jobMap, existing: (sha) => st.db.existing(sha), asOf: st.asOf || {}, wasteVendors: st.settings.wasteVendors,
   });
 
   // ---- header and foot ------------------------------------------------------------------------
@@ -143,6 +143,8 @@
   async function portfolioView(m) {
     const rows = await st.db.view("v_job_month", { month: m + "-01" });
     const by = Object.fromEntries(rows.map((r) => [r.job_number, r]));
+    const [siteRows, plexRows, dumpRows] = await Promise.all([st.db.view("v_site_services_month", { month: m + "-01" }).catch(() => []), st.db.view("v_trailer_plex_month", { month: m + "-01" }).catch(() => []), st.db.view("v_dumpster_month", { month: m + "-01" }).catch(() => [])]);
+    const siteOf = (n) => SS.shortLabel(SS.fromViews(siteRows.filter((x) => x.job_number === n), plexRows.filter((x) => x.job_number === n)), pullsOf(dumpRows.filter((x) => x.job_number === n)));
     const groups = {};
     for (const j of st.settings.jobs.filter((j) => j.active !== false)) (groups[j.campus || "Other"] = groups[j.campus || "Other"] || []).push(j);
     const tot = rows.reduce((t, r) => ({ labor: t.labor + r.labor_cents, rent: t.rent + r.rental_cents + r.rental_lo_cents + (r.offfeed_cents || 0), purch: t.purch + r.purchase_cents, pending: t.pending + r.pending_cents, all: t.all + r.total_cents }), { labor: 0, rent: 0, purch: 0, pending: 0, all: 0 });
@@ -151,17 +153,17 @@
     return html`<div class="row" style="justify-content:space-between"><h1>Portfolio</h1>${monthNav(m, "#/")}<span class="row noprint"><a href="#/report/all?m=${m}"><button>Report (PDF)</button></a><button id="buckets" title="one row per job, month and bucket, the shape GRforecast imports">Export for GRforecast</button></span></div>
       <div class="tiles">${tile("total", "All jobs, this month", tot.all, `${n1(withCost, "job")} with cost`)}${tile("labor", "Labor", tot.labor)}${tile("equipment", "Rentals to client", tot.rent, "on-rent reports and confirmed recurring charges")}${tile("materials", "Purchases (material POs)", tot.purch, tot.pending ? `${money(tot.pending, true)} awaiting a decision` : "")}</div>
       ${pendingLines && st.db.canEdit() ? html`<p class="noprint"><a href="#/settings?tab=purchases">${n1(pendingLines, "PO awaits", "POs await")} a decision &rarr;</a></p>` : ""}
-      ${Object.entries(groups).sort().map(([campus, jobs]) => html`<h2>${campus}${jobs[0].region ? html` <span class="muted small">${jobs[0].region}</span>` : ""}</h2><div class="cards">${jobs.map((j) => jobCard(j, by[j.job_number], m))}</div>`)}
+      ${Object.entries(groups).sort().map(([campus, jobs]) => html`<h2>${campus}${jobs[0].region ? html` <span class="muted small">${jobs[0].region}</span>` : ""}</h2><div class="cards">${jobs.map((j) => jobCard(j, by[j.job_number], m, siteOf(j.job_number)))}</div>`)}
       ${st.settings.jobs.length === 0 ? html`<div class="notice">No jobs yet. Drop the Projects register or an HH2 export on Update, or add them in <a href="#/settings">Settings</a>.</div>` : ""}`;
   }
   const tile = (cls, label, cents, sub) => html`<div class="tile ${cls}"><div class="label">${label}</div><div class="value">${money(cents, true)}</div><div class="sub">${sub || ""}</div></div>`;
-  function jobCard(j, r, m) {
-    if (!r || !r.total_cents && !r.labor_held_hours && !r.pending_lines) return html`<div class="card"><h3><a href="#/job/${j.job_number}?m=${m}">${j.short_name}</a> <span class="muted small">${j.job_number}</span></h3><p class="muted">Nothing recorded for ${C.fmtMonth(m)}.</p></div>`;
+  function jobCard(j, r, m, siteLabel) {
+    if (!r || !r.total_cents && !r.labor_held_hours && !r.pending_lines) return html`<div class="card"><h3><a href="#/job/${j.job_number}?m=${m}">${j.short_name}</a> <span class="muted small">${j.job_number}</span></h3><p class="muted">Nothing recorded for ${C.fmtMonth(m)}.</p>${siteLabel ? html`<p class="muted small">${siteLabel}</p>` : ""}</div>`;
     return html`<div class="card"><h3><a href="#/job/${j.job_number}?m=${m}">${j.short_name}</a> <span class="muted small">${j.name || j.job_number}</span></h3>
       <table><tr><td>Labor</td><td class="num">${money(r.labor_cents)}</td><td class="muted small">${hours(r.labor_hours)} h${r.labor_held_hours ? html`, <span class="warn">${hours(r.labor_held_hours)} held</span>` : ""}</td></tr>
       <tr><td>Rentals</td><td class="num">${money(r.rental_cents + (r.offfeed_cents || 0))}</td><td class="muted small">${r.rental_lines} on rent${r.offfeed_lines ? `, ${r.offfeed_lines} recurring` : ""}${r.rental_lo_cents ? `, Liberty-owned ${money(r.rental_lo_cents)}` : ""}</td></tr>
       <tr><td>Purchases</td><td class="num">${money(r.purchase_cents)}</td><td class="muted small">${r.pending_lines ? html`<span class="warn">${n1(r.pending_lines, "PO")} awaiting a decision</span>` : ""}</td></tr>
-      <tr class="total"><td>Total</td><td class="num">${money(r.total_cents)}</td><td></td></tr></table></div>`;
+      <tr class="total"><td>Total</td><td class="num">${money(r.total_cents)}</td><td></td></tr></table>${siteLabel ? html`<p class="muted small" style="margin:6px 0 0">${siteLabel}</p>` : ""}</div>`;
   }
 
   // ---- Job ----------------------------------------------------------------------------------------
@@ -174,12 +176,15 @@
       db.canEdit() ? db.view("v_labor_held", { job_number: n }) : Promise.resolve([]),
       db.canEdit() ? db.view("v_labor_priced", { job_number: n }, { range: { col: "work_date", from, to } }) : Promise.resolve([])]);
     const items = db.canEdit() ? await db.view("v_rental_items", { job_number: n }).catch(() => []) : [];
-    const [candidates, recur, charges] = await Promise.all([
+    const [candidates, recur, charges, site, plex, dump, pulls] = await Promise.all([
       db.view("v_recurring_candidates", { job_number: n }).catch(() => []), db.view("v_recurring_month", { job_number: n, month: from }).catch(() => []),
-      db.view("recurring_charges", { job_number: n }).catch(() => [])]);
+      db.view("recurring_charges", { job_number: n }).catch(() => []),
+      db.view("v_site_services_month", { job_number: n, month: from }).catch(() => []), db.view("v_trailer_plex_month", { job_number: n, month: from }).catch(() => []),
+      db.view("v_dumpster_month", { job_number: n, month: from }).catch(() => []), db.view("dumpster_pulls", { job_number: n }, { range: { col: "pull_date", from, to }, order: "pull_date" }).catch(() => [])]);
     return { job: st.settings.jobByNumber[n] || { job_number: n, short_name: n }, month: m, tile: tileRows[0] || null, classes, rentals, purchases, held,
       lines: lines.map((r) => Object.assign({}, r, { hours_x100: r.hours_x100 != null ? r.hours_x100 : Math.round(r.hours * 100) })), items,
-      candidates: candidates.slice().sort((a, b) => b.monthly_cents - a.monthly_cents), recur, charges: charges.slice().sort((a, b) => (a.start_month < b.start_month ? -1 : 1)) };
+      candidates: candidates.slice().sort((a, b) => b.monthly_cents - a.monthly_cents), recur, charges: charges.slice().sort((a, b) => (a.start_month < b.start_month ? -1 : 1)),
+      siteCounts: SS.fromViews(site, plex), dump: dump.slice().sort((a, b) => (a.vendor_name < b.vendor_name ? -1 : 1)), pulls };
   }
   function statementsFor(d) {
     // the month's statement per vendor from the items on rent at the month's snapshot
@@ -248,6 +253,30 @@
       ${d.charges.length ? html`<h3>Confirmed</h3><table><tr><th>Vendor</th><th>Line</th><th class="num">A month</th><th>From</th><th>Until</th>${edit ? html`<th></th>` : ""}</tr>
         ${d.charges.map((r) => html`<tr><td>${r.vendor_name}${r.liberty_owned ? html` <span class="pill">Liberty-owned</span>` : ""}</td><td>${r.description}${r.units > 1 ? ` × ${r.units}` : ""}</td><td class="num">${money(r.monthly_cents)}</td><td class="small">${C.fmtMonth(ym(r.start_month))}</td><td class="small">${r.end_month ? C.fmtMonth(ym(r.end_month)) : "open"}</td>${edit ? html`<td class="nowrap"><form class="endcharge inline" data-id="${r.id}" style="display:inline"><input type="month" name="end_month" value="${r.end_month ? ym(r.end_month) : ""}"><button>Set last month</button></form> <button class="delcharge" data-id="${r.id}">Remove</button></td>` : ""}</tr>`)}</table>` : ""}`;
   }
+  const KIND_NAME = { standard: "standard", high_rise: "high-rise", elevator_fit: "elevator-fit", handicap: "handicap", enhanced: "enhanced", womens: "women's" };
+  const restroomLine = (r) => `${Object.entries(r.byKind).map(([k, n]) => `${n} ${KIND_NAME[k] || k}`).join(", ") || "none on the reports"}${r.trailers || r.static || r.containers ? `; ${[r.trailers ? n1(r.trailers, "restroom trailer") : "", r.static ? n1(r.static, "static unit") : "", r.containers ? n1(r.containers, "restroom container") : ""].filter(Boolean).join(", ")}${r.stations ? ` (${r.stations} stations)` : ""}` : ""}`;
+  const restroomExtras = (r) => [r.sinks ? n1(r.sinks, "sink") : "", r.holding_tanks ? n1(r.holding_tanks, "holding tank") : "", r.waste_water_systems ? n1(r.waste_water_systems, "waste & water system") : "", r.service_per_week ? `serviced up to ${r.service_per_week}x weekly` : ""].filter(Boolean).join(" · ");
+  const dumpLine = (x) => x.source === "log" ? `from the log${x.haul_lines ? `, the ledger says ${x.haul_lines}` : ""}` : x.source === "ledger" ? "from the ledger, a pull an invoice" : "bills a lump: log the pulls";
+  const pullsOf = (rows) => (rows.some((x) => x.pulls != null) ? rows.reduce((a, x) => a + (x.pulls || 0), 0) : null);
+  function siteSection(d, m) {
+    const c = d.siteCounts, r = c.restrooms, t = c.trailers, s = c.storage, edit = st.db.canEdit();
+    const pullsTotal = pullsOf(d.dump);
+    return html`<h2>Site services</h2>
+      <p class="muted small">Counted on the month's on-rent reports (restrooms, trailers, containers) and on the haulers' invoices on the ledger or the pull log below (dumpsters). A modular building arrives as sleeves; the front, middles and rear under one contract make one x-plex.</p>
+      <div class="cards">
+        <div class="card"><h3>Restrooms</h3><p class="big">${r.units}</p><p class="small">${restroomLine(r)}</p><p class="muted small">${restroomExtras(r)}</p></div>
+        <div class="card"><h3>Trailers</h3><p class="big">${t.buildings}</p><p class="small">${SS.trailerLabel(t)}</p>
+          <p class="muted small">${s.container_units ? `${n1(s.container_units, "storage container")} (${Object.entries(s.containers).map(([k, n]) => `${n} × ${k}`).join(", ")})` : "no storage containers"}${s.trailers ? ` · ${n1(s.trailers, "storage trailer")}` : ""}</p>
+          ${t.notes.length ? html`<p class="warn small">${t.notes.join("; ")}</p>` : ""}</div>
+        <div class="card"><h3>Dumpsters</h3><p class="big">${pullsTotal == null ? html`<span class="muted">?</span>` : pullsTotal}<span class="muted small"> pulls</span></p>
+          ${d.dump.length ? html`<table>${d.dump.map((x) => html`<tr><td>${x.vendor_name}${x.container_yd ? html` <span class="muted small">${x.container_yd} yd</span>` : ""}</td><td class="num">${x.pulls == null ? html`<span class="muted">no count</span>` : x.pulls}</td><td class="small muted">${dumpLine(x)}</td><td class="num small muted">${x.ledger_cents ? money(x.ledger_cents) : ""}</td></tr>`)}</table>` : html`<p class="muted small">No hauler on the ledger or in the log this month.</p>`}
+          ${c.dumpsters.units ? html`<p class="muted small">${n1(c.dumpsters.units, "roll-off")} on the rental reports (${Object.entries(c.dumpsters.byYards).map(([k, n]) => `${n} × ${k}`).join(", ")})</p>` : ""}</div>
+      </div>
+      <h3>Dumpster log · ${C.fmtMonth(m)}</h3>
+      ${d.pulls.length ? html`<table><tr><th>Date</th><th>Hauler</th><th class="num">Size</th><th class="num">Pulls</th><th>Ticket</th><th class="num">Tons</th><th class="num">Cost</th><th>Note</th>${edit ? html`<th></th>` : ""}</tr>
+        ${d.pulls.map((p) => html`<tr><td class="small">${C.fmtDay(p.pull_date)}</td><td>${p.vendor_name}</td><td class="num">${p.container_yd ? `${p.container_yd} yd` : ""}</td><td class="num">${p.pulls}</td><td class="mono small">${p.ticket_no || ""}</td><td class="num">${p.tonnage || ""}</td><td class="num">${p.cost_cents ? money(p.cost_cents) : ""}</td><td class="small">${p.note || ""}</td>${edit ? html`<td><button class="delpull" data-id="${p.id}">Remove</button></td>` : ""}</tr>`)}</table>` : html`<p class="muted">No pulls logged this month${edit ? "; the field adds them here, one line a pull or a day" : ""}.</p>`}
+      ${edit ? html`<form class="addpull inline" data-job="${d.job.job_number}"><label>Date<input type="date" name="pull_date" value="${C.todayIso().slice(0, 7) === m ? C.todayIso() : m + "-01"}" required></label><label>Hauler<input name="vendor_name" required list="haulers" placeholder="Sourgum" style="width:150px"><datalist id="haulers">${(st.settings.wasteVendors || []).map((w) => html`<option value="${w.name || w.pattern}">`)}</datalist></label><label>Size (yd)<input name="container_yd" type="number" min="1" max="100" style="width:60px"></label><label>Pulls<input name="pulls" type="number" min="1" value="1" required style="width:60px"></label><label>Ticket #<input name="ticket_no" style="width:110px"></label><label>Tons<input name="tonnage" type="number" step="0.01" min="0" style="width:70px"></label><label>Cost $<input name="cost" type="number" step="0.01" min="0" style="width:90px"></label><label>Note<input name="note" style="width:160px"></label><button class="primary">Add pull</button></form>` : ""}`;
+  }
   async function jobView(n, m) {
     const d = await jobData(n, m);
     const t = d.tile;
@@ -281,6 +310,7 @@
         ${recurringCard(d)}
       </div></div>
       ${recurringSection(d)}
+      ${siteSection(d, m)}
       <h2>Purchases (material POs)</h2>
       ${d.purchases.length ? html`<p class="muted small">Purchase Pro's committed amount per PO, by order date, from the latest export. Material POs count; a rental PO is a commitment to a rental vendor and is shown apart (the rental itself is on a feed or a recurring charge). Quotes and cancelled POs are listed and not counted.</p>${purchaseTable(d.purchases, d)}` : html`<p class="muted">No POs dated this month in the latest Purchase Pro export.</p>`}
       ${d.lines.length ? html`<h2>Labor by cost code</h2><table><tr><th>Cost code</th><th>Name</th><th class="num">Hours</th><th class="num">Cost</th><th class="num">Held hours</th></tr>
@@ -295,7 +325,8 @@
     const d = await jobData(n, m);
     const summary = L.summarize(d.lines);
     const purchases = d.purchases.map((p) => ({ vendor: p.vendor_name_raw || p.vendor_key || "", doc_number: p.doc_number, doc_date: p.doc_date, description: p.description, cost_code: p.cost_code, bucket: p.bucket, amount_cents: p.total_cents || 0, status: p.status }));
-    const wb = E.jobMonth({ job: d.job, month: m, labor: { summary, rows: d.lines }, rentals: statementsFor(d), purchases, recurring: d.recur });
+    const wb = E.jobMonth({ job: d.job, month: m, labor: { summary, rows: d.lines }, rentals: statementsFor(d), purchases, recurring: d.recur,
+      site: { counts: d.siteCounts, trailerLabel: SS.trailerLabel(d.siteCounts.trailers), restroomLine: restroomLine(d.siteCounts.restrooms), dump: d.dump, pulls: d.pulls } });
     E.download(wb, E.fileSafe(`${d.job.short_name} ${m} cost.xlsx`));
   }
 
@@ -324,6 +355,8 @@
       ${d.recur.length ? html`<h3>Recurring rentals · confirmed from the Job Cost To Date</h3><table><tr><th>Vendor</th><th>Line</th><th class="num">A month</th><th class="num">Markup</th><th class="num">Total</th></tr>
         ${d.recur.map((r) => html`<tr><td>${r.vendor_name}${r.liberty_owned ? html` <span class="pill">Liberty-owned</span>` : ""}</td><td>${r.description}${r.units > 1 ? ` × ${r.units}` : ""}</td><td class="num">${money(r.rent_cents)}</td><td class="num">${money(r.markup_cents)}</td><td class="num">${money(r.total_cents)}</td></tr>`)}
         <tr class="total"><td colspan="4">Recurring rentals</td><td class="num">${money(d.recur.reduce((a, r) => a + r.total_cents, 0))}</td></tr></table>` : ""}
+      ${d.siteCounts.restrooms.units || d.siteCounts.trailers.buildings || d.dump.length ? html`<h3>Site services</h3><table><tr><th>Restrooms</th><th>Trailers</th><th>Storage</th><th>Dumpsters</th></tr>
+        <tr><td>${d.siteCounts.restrooms.units} units: ${restroomLine(d.siteCounts.restrooms)}${restroomExtras(d.siteCounts.restrooms) ? `; ${restroomExtras(d.siteCounts.restrooms)}` : ""}</td><td>${SS.trailerLabel(d.siteCounts.trailers)}</td><td>${d.siteCounts.storage.container_units ? n1(d.siteCounts.storage.container_units, "container") : "none"}</td><td>${d.dump.map((x) => `${x.vendor_name}: ${x.pulls == null ? "spend only" : n1(x.pulls, "pull")} (${x.source})`).join("; ") || "none"}</td></tr></table>` : ""}
       ${counted.length ? html`<h3>Purchase orders · ${n1(counted.length, "PO")}</h3><table><tr><th>PO #</th><th>Date</th><th>Supplier</th><th>Description</th><th>Type</th><th class="num">Committed</th></tr>
         ${counted.slice().sort((a, b) => (a.doc_date + a.doc_number < b.doc_date + b.doc_number ? -1 : 1)).map((r) => html`<tr><td class="mono">${r.doc_number}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="small">${r.order_type || ""}</td><td class="num">${money(r.total_cents)}</td></tr>`)}
         <tr class="total"><td colspan="5">Purchases</td><td class="num">${money(counted.reduce((a, r) => a + (r.total_cents || 0), 0))}</td></tr></table>` : ""}</section>`;
@@ -445,7 +478,7 @@
   const classOptions = (selected) => html`<option value="" ${selected ? "" : "selected"}>(by prefix)</option>${L.KNOWN_CLASSES.map((c) => html`<option value="${c}" ${c === selected ? "selected" : ""}>${classLabel(c)}</option>`)}`;
   async function settingsView(tab) {
     const S = st.settings, edit = st.db.canEdit();
-    const tabs = [["jobs", "Jobs"], ["vendors", "Vendors"], ["jobmap", "Vendor job names"], ["rates", "Rate tables"], ["employees", "Employees"], ["paytypes", "Pay types"], ["purchases", "Purchases"], ["recurring", "Recurring"], ["members", "People"], ["files", "Files"]];
+    const tabs = [["jobs", "Jobs"], ["vendors", "Vendors"], ["jobmap", "Vendor job names"], ["rates", "Rate tables"], ["employees", "Employees"], ["paytypes", "Pay types"], ["purchases", "Purchases"], ["recurring", "Recurring"], ["waste", "Haulers"], ["members", "People"], ["files", "Files"]];
     let body;
     if (tab === "jobs") {
       const held = edit ? await st.db.view("v_labor_held", { status: "held:unknown job" }) : [];
@@ -518,6 +551,12 @@
       body = html`<p class="muted small">Every charge confirmed as a monthly rental, across jobs: counted under Rentals from its first month until its last, with the job's markup. The candidates wait on each job's page, found on its Job Cost To Date.</p>
         ${all.length ? html`<table><tr><th>Job</th><th>Vendor</th><th>Line</th><th class="num">A month</th><th>From</th><th>Until</th><th>Source</th>${edit ? html`<th></th>` : ""}</tr>
           ${all.map((r) => html`<tr><td><a href="#/job/${r.job_number}">${jobName(r.job_number)}</a></td><td>${r.vendor_name}${r.liberty_owned ? html` <span class="pill">Liberty-owned</span>` : ""}</td><td>${r.description}${r.units > 1 ? ` × ${r.units}` : ""}</td><td class="num">${money(r.monthly_cents)}</td><td class="small">${C.fmtMonth(ym(r.start_month))}</td><td class="small">${r.end_month ? C.fmtMonth(ym(r.end_month)) : "open"}</td><td class="small">${r.source}</td>${edit ? html`<td class="nowrap"><form class="endcharge inline" data-id="${r.id}" style="display:inline"><input type="month" name="end_month" value="${r.end_month ? ym(r.end_month) : ""}"><button>Set last month</button></form> <button class="delcharge" data-id="${r.id}">Remove</button></td>` : ""}</tr>`)}</table>` : html`<p class="muted">Nothing confirmed yet.</p>`}`;
+    } else if (tab === "waste") {
+      const wv = (S.wasteVendors || []).slice().sort((a, b) => (a.pattern < b.pattern ? -1 : 1));
+      body = html`<p class="muted small">The dumpster haulers. A hauler that invoices one pull at a time is counted from the ledger, a pull an invoice; one that bills a lump shows spend, and the pulls come from the log on each job page. The pattern is matched inside the hauler's name as Sage and the log spell it.</p>
+        <table><tr><th>Matches</th><th>Name</th><th>Bills</th><th class="num">A pull</th><th class="num">Container</th>${edit ? html`<th></th>` : ""}</tr>
+        ${wv.map((w) => html`<tr><td class="mono">${w.pattern}</td><td>${w.name || ""}</td><td>${w.bills_per_haul ? "a pull at a time (counted from the ledger)" : "a lump (log the pulls)"}</td><td class="num">${w.haul_rate_cents ? money(w.haul_rate_cents) : ""}</td><td class="num">${w.container_yd ? `${w.container_yd} yd` : ""}</td>${edit ? html`<td><button class="delwaste" data-id="${w.id}">Remove</button></td>` : ""}</tr>`)}</table>
+        ${edit ? html`<form id="addwaste" class="inline"><label>Matches<input name="pattern" required placeholder="sourgum" style="width:140px"></label><label>Name<input name="name" placeholder="Sourgum Waste" style="width:160px"></label><label>Bills<select name="bills_per_haul"><option value="true">a pull at a time</option><option value="false">a lump</option></select></label><label>A pull $<input name="rate" type="number" step="0.01" min="0" style="width:90px"></label><label>Container yd<input name="container_yd" type="number" min="1" max="100" style="width:60px"></label><button class="primary">Add hauler</button></form>` : ""}`;
     } else if (tab === "members") {
       body = html`<table><tr><th>Email</th><th>Role</th><th>Name</th></tr>${S.members.map((m) => html`<tr><td>${m.email}</td><td>${m.role}</td><td>${m.display_name || ""}</td></tr>`)}</table>
         ${st.db.role === "owner" ? html`<form id="invite" class="inline"><label>Email<input name="email" type="email" required></label><label>Role<select name="role"><option value="viewer">viewer (sees totals, never names)</option><option value="editor">editor</option><option value="owner">owner</option></select></label><button>Invite</button></form>` : html`<p class="muted small">Owners invite people.</p>`}`;
@@ -570,6 +609,17 @@
       ev.preventDefault(); const v = f.end_month.value;
       try { await st.db.update("recurring_charges", { id: f.dataset.id }, { end_month: v ? v + "-01" : null }); toast(v ? `Last month set to ${C.fmtMonth(v)}.` : "Open again."); render(); } catch (e) { toast(e.message); }
     }));
+    $$("form.addpull").forEach((f) => f.addEventListener("submit", async (ev) => {
+      ev.preventDefault(); const d = Object.fromEntries(new FormData(f));
+      try {
+        await st.db.insert("dumpster_pulls", { job_number: f.dataset.job, pull_date: d.pull_date, vendor_name: d.vendor_name.trim(), container_yd: d.container_yd ? +d.container_yd : null, pulls: +d.pulls || 1,
+          ticket_no: d.ticket_no.trim() || null, tonnage: d.tonnage ? +d.tonnage : null, cost_cents: d.cost ? C.cents(d.cost) : null, note: d.note.trim() || null });
+        toast("Pull logged."); render();
+      } catch (e) { toast(e.message); }
+    }));
+    $$("button.delpull").forEach((b) => b.addEventListener("click", async () => { if (!confirm("Remove this pull from the log?")) return; try { await st.db.remove("dumpster_pulls", { id: b.dataset.id }); toast("Removed."); render(); } catch (e) { toast(e.message); } }));
+    const aw = $("#addwaste"); if (aw) aw.addEventListener("submit", async (ev) => { ev.preventDefault(); const d = Object.fromEntries(new FormData(aw)); try { await st.db.insert("waste_vendors", { pattern: d.pattern.trim().toLowerCase(), name: d.name.trim() || null, bills_per_haul: d.bills_per_haul === "true", haul_rate_cents: d.rate ? C.cents(d.rate) : null, container_yd: d.container_yd ? +d.container_yd : null }); st.settings = await loadSettings(); toast("Hauler added."); render(); } catch (e) { toast(e.message); } });
+    $$("button.delwaste").forEach((b) => b.addEventListener("click", async () => { if (!confirm("Remove this hauler? Its ledger lines stop counting as pulls; the log stays.")) return; try { await st.db.remove("waste_vendors", { id: b.dataset.id }); st.settings = await loadSettings(); toast("Removed."); render(); } catch (e) { toast(e.message); } }));
     $$("button.delcharge").forEach((b) => b.addEventListener("click", async () => {
       if (!confirm("Remove this confirmed charge? Its months stop counting; the candidate comes back on the job page.")) return;
       try { await st.db.remove("recurring_charges", { id: b.dataset.id }); toast("Removed."); render(); } catch (e) { toast(e.message); }

@@ -48,3 +48,10 @@ insert into public.pay_type_policy (workspace_id, pay_type_name, policy) values
   ('00000000-0000-4000-8000-000000000001', 'Vacation', 'held_pto'), ('00000000-0000-4000-8000-000000000001', 'Holiday', 'held_pto'),
   ('00000000-0000-4000-8000-000000000001', 'Sick Time', 'held_pto'), ('00000000-0000-4000-8000-000000000001', 'Flex Paid Time Off', 'held_pto'),
   ('00000000-0000-4000-8000-000000000001', 'Birthday Time Off', 'held_pto'), ('00000000-0000-4000-8000-000000000001', 'Floating Hol', 'held_pto');
+
+-- the haulers: Sourgum invoices one pull at a time, Waste Management bills a lump
+insert into public.waste_vendors (workspace_id, pattern, name, bills_per_haul, haul_rate_cents, container_yd)
+  select w.id, v.pattern, v.name, v.per_haul, v.rate, v.yd from public.workspaces w,
+  (values ('sourgum', 'Sourgum Waste', true, 68500, 30), ('waste management', 'Waste Management', false, null::int, 40)) as v(pattern, name, per_haul, rate, yd)
+  where w.name = 'Liberty Builds'
+  on conflict do nothing;

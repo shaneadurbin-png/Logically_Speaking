@@ -301,7 +301,7 @@ const JCTD_H = ["Job", "Job Description", "Extra", "Cost Code", "Description", "
 const pad = (v) => (v == null || v === "" ? "   " : String(v) + "   ");
 const stampOf = (d) => { const x = C.addDays(d, 7); return `${+x.slice(5, 7)}-${x.slice(8, 10)}-${x.slice(0, 4)}`; };
 // one transaction: cat, type, date, amount, {code, codeName, vendor, name, inv, desc, units, pay, emp, pe}
-const jrow = (cat, tt, td, amt, o = {}) => [pad(DC4), pad("CDR1 East DC4"), pad(""), pad(o.code || "01-02-0001"), pad(o.codeName || "Construction Materials DC4"), pad(cat), pad(tt),
+const jrow = (cat, tt, td, amt, o = {}) => [pad(o.job || DC4), pad(o.jobName || "CDR1 East DC4"), pad(""), pad(o.code || "01-02-0001"), pad(o.codeName || "Construction Materials DC4"), pad(cat), pad(tt),
   pad(o.pe || ""), pad(td), pad(C.addDays(td, 9)), pad(stampOf(td)), o.units == null ? 1 : o.units, o.uc == null ? 0 : o.uc, amt, pad(o.pay || ""), pad(""), pad(""), pad(o.emp || ""), pad(""), pad(""), pad(""),
   pad(o.batch || "88441"), pad(o.vendor || ""), pad(o.name || ""), pad(o.inv || ""), pad(""), pad(o.desc || "")];
 const SUN = { vendor: "SUN050", name: "Sunbelt Rentals" }, UNI = { vendor: "UNI100", name: "United Rentals (North America)" }, MOB = { vendor: "MOB200", name: "Mobile Air & Power Rentals" },
@@ -362,6 +362,113 @@ jctdRows.push(jrow("OTH", "JC cost", "2025-10-01", 1866.89, { units: 0, batch: "
     ],
     notCandidates: ["Amphibious Medics", "Westdale Hotel2, LLC", "Uline Shipping Supplies", "Badger Daylighting Corp", "Star Equipment Ltd.", "Grainger Inc."],
     summary: { total: 6, off_feed: 3, on_feed: 3, off_feed_monthly_cents: 49716394, on_feed_monthly_cents: 1209248 + 753800 + 602303, current: 5, liberty_owned: 1 } }, null, 2));
+}
+
+// ---- site services: a United Rentals export with the restrooms, the sleeves of two modular buildings, offices, containers (DC5),
+//      beside the DC4 lines above; and DC5's Job Cost To Date with a hauler that invoices one pull at a time and one that bills a lump
+const site = (o) => ur(Object.assign({ JobName: "CDR-SCCI-DC5                  ", AcctCode2: DC5, EquipmentNumber: "                              ", DateOut: new Date(2026, 5, 10), EstimatedReturnDate: new Date(2026, 11, 20) }, o));
+let unit = 12000000;
+const u = () => String(++unit).padEnd(30);
+const siteRows = [
+  // one 6-plex and one 4-plex, a lone front, two double-wides, three offices
+  site({ ContractNumber: 270000001, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1100, EqpDescription: "MODULAR BLDG FAST FRONT", MonthlyRate: 3023.12 }),
+  site({ ContractNumber: 270000001, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1200, EqpDescription: "MODULAR BLDG FAST MIDDLE", MonthlyRate: 3023.12 }),
+  site({ ContractNumber: 270000001, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1200, EqpDescription: "MODULAR BLDG FAST MIDDLE", MonthlyRate: 3023.12 }),
+  site({ ContractNumber: 270000001, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1200, EqpDescription: "MODULAR BLDG FAST MIDDLE", MonthlyRate: 3023.12 }),
+  site({ ContractNumber: 270000001, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1200, EqpDescription: "MODULAR BLDG FAST MIDDLE", MonthlyRate: 3023.12 }),
+  site({ ContractNumber: 270000001, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1300, EqpDescription: "MODULAR BLDG FAST REAR W/2RR", MonthlyRate: 3023.14 }),
+  site({ ContractNumber: 270000002, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1100, EqpDescription: "MODULAR BLDG FAST FRONT", MonthlyRate: 2438.07 }),
+  site({ ContractNumber: 270000002, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1200, EqpDescription: "MODULAR BLDG FAST MIDDLE", MonthlyRate: 2438.07 }),
+  site({ ContractNumber: 270000002, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1200, EqpDescription: "MODULAR BLDG FAST MIDDLE", MonthlyRate: 2438.07 }),
+  site({ ContractNumber: 270000002, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1300, EqpDescription: "MODULAR BLDG FAST REAR W/1RR", MonthlyRate: 2438.07 }),
+  site({ ContractNumber: 270000003, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1100, EqpDescription: "MODULAR BLDG FAST FRONT", MonthlyRate: 3023.12 }),
+  site({ ContractNumber: 270000004, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 2460, EqpDescription: "MODULAR BLDG 24X60 W/2-RR", MonthlyRate: 3390 }),
+  site({ ContractNumber: 270000005, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 2460, EqpDescription: "MODULAR BLDG 24X60 W/2-RR", MonthlyRate: 3390 }),
+  site({ ContractNumber: 270000006, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1260, EqpDescription: "OFFICE TRAILER 12X60 W/RR", MonthlyRate: 1250 }),
+  site({ ContractNumber: 270000006, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1260, EqpDescription: "OFFICE TRAILER 12X60 W/RR", MonthlyRate: 1250 }),
+  site({ ContractNumber: 270000007, EquipmentNumber: u(), EquipmentCategory: 740, EquipmentClass: 1260, EqpDescription: "OFFICE TRAILER 12X60 W/RR", MonthlyRate: 1250 }),
+  site({ ContractNumber: 270000006, EquipmentCategory: 740, EquipmentClass: 9010, EqpDescription: "OFFICE TRAILER STEPS", Quantity: 5, MonthlyRate: 45 }),
+  site({ ContractNumber: 270000008, EquipmentNumber: u(), EquipmentCategory: 745, EquipmentClass: 8200, EqpDescription: "GLO/OFFICE CONTAINER 8X20X8'6\"", MonthlyRate: 560 }),
+  site({ ContractNumber: 270000008, EquipmentNumber: u(), EquipmentCategory: 745, EquipmentClass: 8200, EqpDescription: "GLO/OFFICE CONTAINER 8X20X8'6\"", MonthlyRate: 560 }),
+  // storage containers
+  site({ ContractNumber: 270000009, EquipmentNumber: u(), EquipmentCategory: 745, EquipmentClass: 8400, EqpDescription: "CONTAINER 8X40X9'6\" HI CUBE", MonthlyRate: 185 }),
+  site({ ContractNumber: 270000009, EquipmentNumber: u(), EquipmentCategory: 745, EquipmentClass: 8400, EqpDescription: "CONTAINER 8X40X9'6\" HI CUBE", MonthlyRate: 185 }),
+  site({ ContractNumber: 270000009, EquipmentNumber: u(), EquipmentCategory: 745, EquipmentClass: 8400, EqpDescription: "CONTAINER 8X40X9'6\" HI CUBE", MonthlyRate: 185 }),
+  site({ ContractNumber: 270000009, EquipmentNumber: u(), EquipmentCategory: 745, EquipmentClass: 8400, EqpDescription: "CONTAINER 8X40X9'6\" HI CUBE", MonthlyRate: 185 }),
+  site({ ContractNumber: 270000010, EquipmentNumber: u(), EquipmentCategory: 745, EquipmentClass: 8200, EqpDescription: "CONTAINER 8X20X8'6\"", MonthlyRate: 125 }),
+  site({ ContractNumber: 270000010, EquipmentNumber: u(), EquipmentCategory: 745, EquipmentClass: 8200, EqpDescription: "CONTAINER 8X20X8'6\"", MonthlyRate: 125 }),
+  site({ ContractNumber: 270000010, EquipmentNumber: u(), EquipmentCategory: 745, EquipmentClass: 8200, EqpDescription: "CONTAINER 8X20X8'6\"", MonthlyRate: 125 }),
+  // restrooms: bulk lines with a quantity, a trailer, a static unit, sinks, tanks, the service lines, a tray
+  site({ ContractNumber: 270000011, EquipmentCategory: 600, EquipmentClass: 2475, EqpDescription: "STANDARD PORTABLE RESTROOM", Quantity: 10, MonthlyRate: 95 }),
+  site({ ContractNumber: 270000011, EquipmentCategory: 600, EquipmentClass: 2475, EqpDescription: "STANDARD PORTABLE RESTROOM", Quantity: 2, MonthlyRate: 95 }),
+  site({ ContractNumber: 270000011, EquipmentCategory: 600, EquipmentClass: 2480, EqpDescription: "HIGH RISE PORTABLE RESTROOM", Quantity: 3, MonthlyRate: 140 }),
+  site({ ContractNumber: 270000011, EquipmentCategory: 600, EquipmentClass: 2490, EqpDescription: "HANDICAP PORTABLE RESTROOM", MonthlyRate: 150 }),
+  site({ ContractNumber: 270000011, EquipmentCategory: 600, EquipmentClass: 2495, EqpDescription: "ENHANCED PORTABLE RESTROOM", MonthlyRate: 180 }),
+  site({ ContractNumber: 270000012, EquipmentNumber: u(), EquipmentCategory: 600, EquipmentClass: 3000, EqpDescription: "RESTROOM TRAILER 12X60 RR", MonthlyRate: 6250 }),
+  site({ ContractNumber: 270000013, EquipmentNumber: u(), EquipmentCategory: 600, EquipmentClass: 3100, EqpDescription: "STATIC RESTROOM - 15 STATION", MonthlyRate: 4800 }),
+  site({ ContractNumber: 270000011, EquipmentCategory: 600, EquipmentClass: 2500, EqpDescription: "SINK - PORTABLE", Quantity: 4, MonthlyRate: 60 }),
+  site({ ContractNumber: 270000011, EquipmentCategory: 600, EquipmentClass: 2600, EqpDescription: "WASTE HOLDING TANK", Quantity: 2, MonthlyRate: 110 }),
+  site({ ContractNumber: 270000011, EquipmentCategory: 600, EquipmentClass: 2700, EqpDescription: "SERVICE - RESTROOM 5X WEEKLY", Quantity: 12, MonthlyRate: 220 }),
+  site({ ContractNumber: 270000011, EquipmentCategory: 600, EquipmentClass: 2710, EqpDescription: "SERVICE - SINK 5X WEEKLY", Quantity: 4, MonthlyRate: 80 }),
+  site({ ContractNumber: 270000011, EquipmentCategory: 600, EquipmentClass: 2720, EqpDescription: "SERVICE - WASTE TANK 3X WEEKLY", Quantity: 2, MonthlyRate: 420 }),
+  site({ ContractNumber: 270000011, EquipmentCategory: 600, EquipmentClass: 2800, EqpDescription: "4 X 4 CONTAINMENT TRAY - RESTROOM", Quantity: 3, MonthlyRate: 15 }),
+  site({ ContractNumber: 270000014, EquipmentNumber: u(), EquipmentCategory: 600, EquipmentClass: 3200, EqpDescription: "CONTAINER 20' WASTE & WATER", MonthlyRate: 5000 }),
+  // not site services: a roll-off tank, an equipment trailer, light towers
+  site({ ContractNumber: 270000015, EquipmentNumber: u(), EquipmentCategory: 530, EquipmentClass: 6300, EqpDescription: "TANK 6300 GAL ROLLOFF POLY TANK LINED", MonthlyRate: 900 }),
+  site({ ContractNumber: 270000016, EquipmentNumber: u(), EquipmentCategory: 820, EquipmentClass: 1416, EqpDescription: "TRAILER EQUIP 14'-16' 9-12K DRP DCK TNDM", MonthlyRate: 400 }),
+  site({ ContractNumber: 270000017, EquipmentNumber: u(), EquipmentCategory: 500, EquipmentClass: 1000, EqpDescription: "LIGHT TOWER", MonthlyRate: 485 }),
+  site({ ContractNumber: 270000017, EquipmentNumber: u(), EquipmentCategory: 500, EquipmentClass: 1000, EqpDescription: "LIGHT TOWER", MonthlyRate: 485 }),
+];
+{
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([UR_H].concat(urRows, siteRows), { cellDates: true }), "Sheet 1");
+  write("site/Equipment_On_Rent_-_All_Jobs_2026-09-27-08.00.00.xlsx", XLSX.write(wb, { type: "buffer", bookType: "xlsx", cellDates: true }));
+}
+const WAY = { vendor: "WAY100", name: "Wayste Inc. dba Sourgum Waste" }, WMI = { vendor: "WMI100", name: "Waste Management Inc. of FL" };
+const d5 = { job: DC5, jobName: "CDR1 East DC5" };
+const dc5Rows = [];
+dc5Rows.push(jrow("LBR", "PR cost", "2026-09-01", 254.56, Object.assign({ code: "01-01-0001", codeName: "General Labor/Clean-Up DC5", units: 8, uc: 31.82, pay: "UNION REG", emp: "FB5002", desc: "Nguyen; An", pe: "2026-09-06" }, d5)));
+dc5Rows.push(jrow("LBR", "PR cost", "2026-09-02", 254.56, Object.assign({ code: "01-01-0001", codeName: "General Labor/Clean-Up DC5", units: 8, uc: 31.82, pay: "UNION REG", emp: "FB5002", desc: "Nguyen; An", pe: "2026-09-06" }, d5)));
+// Sourgum: one invoice per pull; a credit reverses one of August's
+[["2026-08-03", "78401-1"], ["2026-08-05", "78402-1"], ["2026-08-07", "78403-1"], ["2026-08-11", "78404-1"], ["2026-08-13", "78405-1"], ["2026-08-17", "78406-1"], ["2026-08-19", "78407-1"], ["2026-08-24", "78408-1"], ["2026-08-27", "78409-1"]]
+  .forEach(([d, inv]) => dc5Rows.push(jrow("EQU", "AP cost", d, 685, Object.assign({ code: "01-04-0001", codeName: "Dumpsters DC5", inv, desc: DC5 }, WAY, d5))));
+dc5Rows.push(jrow("EQU", "AP cost", "2026-08-20", -685, Object.assign({ code: "01-04-0001", codeName: "Dumpsters DC5", inv: "78405-1", desc: "(Rev)" + DC5 }, WAY, d5)));
+[["2026-09-03", "78501-1", 685], ["2026-09-08", "78502-1", 685], ["2026-09-11", "78503-1", 685], ["2026-09-15", "78504-1", 685], ["2026-09-18", "78505-1", 665]]
+  .forEach(([d, inv, amt]) => dc5Rows.push(jrow("EQU", "AP cost", d, amt, Object.assign({ code: "01-04-0001", codeName: "Dumpsters DC5", inv, desc: DC5 }, WAY, d5))));
+// Waste Management: a lump twice a month, with a late fee
+dc5Rows.push(jrow("EQU", "AP cost", "2026-08-03", 82267.34, Object.assign({ code: "01-04-0001", codeName: "Dumpsters DC5", inv: "9473618-1345-6", desc: "26-006766 & 26-006765" }, WMI, d5)));
+dc5Rows.push(jrow("NBE", "AP cost", "2026-08-03", 1450.70, Object.assign({ code: "01-04-0001", codeName: "Dumpsters DC5", inv: "9473618-1345-6", desc: "NONBILLABLE LATE FEE" }, WMI, d5)));
+dc5Rows.push(jrow("EQU", "AP cost", "2026-08-17", 52515.47, Object.assign({ code: "01-04-0001", codeName: "Dumpsters DC5", inv: "9474351-1345-3", desc: "26-006766, 26-006765" }, WMI, d5)));
+dc5Rows.push(jrow("EQU", "AP cost", "2026-09-02", 61000, Object.assign({ code: "01-04-0001", codeName: "Dumpsters DC5", inv: "9475900-1345-1", desc: "26-006766 & 26-006765" }, WMI, d5)));
+dc5Rows.push(jrow("MAT", "AP cost", "2026-08-13", 228.4, Object.assign({ inv: "211931338", desc: "Freight" }, ULI, d5)));
+{
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([JCTD_H].concat(dc5Rows)), "Sheet1");
+  write("site/CDR_DC5_9-29-26.xlsx", XLSX.write(wb, { type: "buffer", bookType: "xlsx" }));
+  write("site/waste_vendors.json", JSON.stringify([{ id: 1, pattern: "sourgum", bills_per_haul: true, haul_rate_cents: 68500, container_yd: 30 }, { id: 2, pattern: "waste management", bills_per_haul: false, haul_rate_cents: null, container_yd: 40 }], null, 2));
+  write("site/expected.json", JSON.stringify({
+    onrent: "Equipment_On_Rent_-_All_Jobs_2026-09-27-08.00.00.xlsx", jctd: "CDR_DC5_9-29-26.xlsx", job: DC5, jobRef: "CDR-SCCI-DC5", siteLines: siteRows.length, jctdRows: dc5Rows.length,
+    counts: {
+      restrooms: { units: 17, byKind: { standard: 12, high_rise: 3, handicap: 1, enhanced: 1 }, trailers: 1, static: 1, containers: 0, stations: 15, sinks: 4, holding_tanks: 2, waste_water_systems: 1, service_per_week: 5 },
+      trailers: { complexes: [{ label: "6-plex", n: 1, sections: 6 }, { label: "4-plex", n: 1, sections: 4 }], modular: { "24X60 w/2 RR": 2 }, offices: { "12X60 w/1 RR": 3 }, office_containers: 2, unspecified: 0, buildings: 9,
+        notes: ["contract 270000003: 1 front, 0 rears: the sections do not close"] },
+      storage: { containers: { "8X40": 4, "8X20": 3 }, container_units: 7, trailers: 0 },
+      dumpsters: { units: 0, byYards: {} }, accessories: { steps: 5, tray: 3 }, classified: siteRows.length - 4 },
+    trailerLabel: "1 × 6-plex, 1 × 4-plex, 2 × 24X60 w/2 RR, 3 × 12X60 w/1 RR office, 2 office containers",
+    // pulls per vendor and month from the ledger alone, then with the log
+    ledger: [
+      { month: "2026-08", vendor: "sourgum", pulls: 8, source: "ledger", ledger_lines: 10, ledger_cents: 548000 },
+      { month: "2026-08", vendor: "waste management", pulls: null, source: "spend", ledger_lines: 3, ledger_cents: 13623351 },
+      { month: "2026-09", vendor: "sourgum", pulls: 5, source: "ledger", ledger_lines: 5, ledger_cents: 340500 },
+      { month: "2026-09", vendor: "waste management", pulls: null, source: "spend", ledger_lines: 1, ledger_cents: 6100000 }],
+    log: [{ job_number: DC5, pull_date: "2026-08-12", vendor_name: "Waste Management", container_yd: 40, pulls: 3, ticket_no: "WM-1" },
+      { job_number: DC5, pull_date: "2026-08-20", vendor_name: "Sourgum", container_yd: 30, pulls: 7, ticket_no: "S-20", cost_cents: 479500 }],
+    withLog: [
+      { month: "2026-08", vendor: "sourgum", pulls: 7, source: "log", entries: 1, haul_lines: 8 },
+      { month: "2026-08", vendor: "waste management", pulls: 3, source: "log", entries: 1, haul_lines: 3 },
+      { month: "2026-09", vendor: "sourgum", pulls: 5, source: "ledger", entries: 0, haul_lines: 5 },
+      { month: "2026-09", vendor: "waste management", pulls: null, source: "spend", entries: 0, haul_lines: 1 }],
+  }, null, 2));
 }
 
 // ---- a zip of a drop: one STORED entry, one DEFLATED, a system file, a folder ---

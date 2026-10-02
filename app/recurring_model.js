@@ -33,10 +33,11 @@
   const keyOf = (job, vendor, desc, amt) => `${job}|${vendor}|${desc}|${amt}`;
 
   /** lines (jctd rows) -> candidates, largest monthly first.
-      opts: { onFeed: (vendor_name) => bool, latestMonth: "YYYY-MM" (default: the latest month on the job's ledger) } */
+      opts: { onFeed: (vendor_name) => bool, exclude: (vendor_name) => bool (the waste haulers: a pull a line is not a rental),
+             latestMonth: "YYYY-MM" (default: the latest month on the job's ledger) } */
   function candidates(lines, opts = {}) {
-    const onFeed = opts.onFeed || (() => false);
-    const eq = (lines || []).filter((l) => (l.trans_type === "AP cost" || l.trans_type === "IV cost") && l.cat === "EQU" && l.amount_cents && vendorOf(l));
+    const onFeed = opts.onFeed || (() => false), exclude = opts.exclude || (() => false);
+    const eq = (lines || []).filter((l) => (l.trans_type === "AP cost" || l.trans_type === "IV cost") && l.cat === "EQU" && l.amount_cents && vendorOf(l) && !exclude(l.vendor_name));
     // net reversals: per (job, vendor, invoice, line, amount), a credit cancels the earliest charge
     const pos = {}, neg = {};
     for (const l of eq) {

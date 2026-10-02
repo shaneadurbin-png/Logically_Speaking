@@ -10,9 +10,9 @@
   if (typeof module === "object" && module.exports) {
     module.exports = factory(require("./common.js"), require("./sniff.js"), require("./hh2.js"), require("./onrent.js"),
       require("./labor_model.js"), require("./rentals_model.js"), require("./sage_rates.js"), require("./purchase_pro.js"), require("./projects.js"),
-      require("./jctd.js"), require("./recurring_model.js"), require("./onrent_vendors.js"));
-  } else root.Intake = factory(root.Common, root.Sniff, root.HH2, root.OnRent, root.LaborModel, root.RentalsModel, root.SageRates, root.PurchasePro, root.Projects, root.JCTD, root.RecurringModel, root.OnRentVendors);
-}(typeof self !== "undefined" ? self : this, function (C, Sniff, HH2, OnRent, L, R, Sage, PO, Projects, JCTD, Rec, V) {
+      require("./jctd.js"), require("./recurring_model.js"), require("./onrent_vendors.js"), require("./site_services.js"));
+  } else root.Intake = factory(root.Common, root.Sniff, root.HH2, root.OnRent, root.LaborModel, root.RentalsModel, root.SageRates, root.PurchasePro, root.Projects, root.JCTD, root.RecurringModel, root.OnRentVendors, root.SiteServices);
+}(typeof self !== "undefined" ? self : this, function (C, Sniff, HH2, OnRent, L, R, Sage, PO, Projects, JCTD, Rec, V, SS) {
   "use strict";
 
   // ---- the zip: read from its directory, inflate only what is asked for -----
@@ -135,7 +135,7 @@
   function jctdCard(card, doc, ctx) {
     const jobs = (ctx.labor && ctx.labor.jobs) || [];
     const job = jobs.find((j) => j.job_number === doc.job_number);
-    const cands = Rec.candidates(doc.rows, { onFeed: (name) => !!V.vendorFromText(name) });
+    const cands = Rec.candidates(doc.rows, { onFeed: (name) => !!V.vendorFromText(name), exclude: (name) => !!SS.wasteVendorFor(ctx.wasteVendors || [], name) });
     const sm = Rec.summary(cands);
     const t = doc.totals;
     Object.assign(card, {
