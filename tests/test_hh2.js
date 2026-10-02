@@ -10,6 +10,25 @@ const bytes = (rel) => fs.readFileSync(path.join(F, rel));
 const doc = HH2.read(bytes(expected.file), expected.file);
 
 check("row count is conserved, duplicates included", () => eq(doc.totals.rows, expected.rows));
+
+// ---- the weekly cost workbook's Labor sheet: the labor history ----
+const WX = JSON.parse(fs.readFileSync(path.join(F, "weekly_expected.json"), "utf8"));
+const w = HH2.read(bytes(WX.file), WX.file);
+check("the weekly cost workbook's Labor sheet reads as labor history: rows, hours, the workbook's own cost, the audit rows", () => {
+  eq(w.kind, "hh2_labor"); eq(w.layout, "weeklycostdata"); eq(doc.layout, "hh2");
+  eq(w.totals.rows, WX.rows); eq(w.totals.hoursX100, WX.hoursX100); eq(w.totals.costGivenCents, WX.costGivenCents); eq(w.totals.rowsGiven, WX.rowsGiven);
+  eq(w.totals.auditRows, WX.auditRows); eq(w.totals.duplicates, WX.duplicates); eq(w.totals.employees, WX.employees); eq(w.range, WX.range); eq(w.rangeSource, "data");
+  eq(w.totals.classes, WX.classes); eq(Object.keys(w.byJob).sort(), WX.jobs); eq(w.byJob[WX.newJob].job_name, WX.newJobName);
+});
+check("a history row: the cost as given, the class the workbook carried, the pay type as both key and policy name", () => {
+  const r = w.rows[0]; eq(r.employee_number, "FB52001"); eq(r.work_date, "2026-08-03"); eq(r.cost_given_cents, 69800); eq(r.class_given, "#LAB-J"); eq(r.pay_type, "REG"); eq(r.pay_type_name, "REG"); eq(r.source_layout, "weeklycostdata");
+  const a = w.rows.find((x) => x.pay_type_name === "Vacation"); eq(a.cost_given_cents, null); ok(a.row_index > 1000000, "audit rows are numbered apart from the Labor sheet's");
+  eq(w.employees.FB82001, "Kim; Soo"); eq(w.rows.find((x) => x.hours_x100 < 0).cost_given_cents, -82000, "an adjustment keeps its negative cost");
+  eq(HH2.classOf("Laborer", "GFM"), "#LAB-GF"); eq(HH2.classOf("Carpenter", "JM"), "#CARP-J"); eq(HH2.classOf("Welder", "JM"), null); eq(HH2.classOf("Superintendent", ""), "#SUP");
+});
+check("a Week Ending that is not the Sunday on or after its date refuses", () =>
+  refuses(() => HH2.read(bytes("bad/WeeklyCostData_badweek.xlsx"), "WeeklyCostData_badweek.xlsx"), /Week Ending Aug 16, 2026 is not the Sunday on or after Aug 4, 2026/));
+check("looksLike tells both labor layouts", () => { ok(HH2.looksLike(C.readBook(bytes(WX.file)))); ok(HH2.looksLikeWeekly(C.readBook(bytes(WX.file)))); ok(!HH2.looksLikeWeekly(C.readBook(bytes(expected.file)))); });
 check("hours are conserved to the hundredth", () => eq(doc.totals.hoursX100, expected.hoursX100));
 check("exact duplicates are counted and kept", () => {
   eq(doc.totals.duplicates, expected.duplicates);

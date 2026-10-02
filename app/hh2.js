@@ -49,8 +49,92 @@
     return { start: a, end: b };
   }
 
-  /** Does this workbook carry the HH2 sheet and header? (for sniffing) */
+  // ---- the weekly cost workbook's Labor sheet: the labor HISTORY, priced by the old workbook ----
+  // Loaded once as the baseline; the weekly HH2 files add to it. A row keeps the
+  // cost the workbook gave it (cost_given_cents) and the class it carried then.
+  const WCD_SHEET = "Labor", WCD_AUDIT = "Labor Audit";
+  const WCD_COLUMNS = ["Week Ending", "Date", "Employee", "Employee #", "Trade", "Class", "Job #", "Job Name", "Cost Code", "Cost Code Name", "Pay Type", "Hours", "Labor Cost", "Labor Cost - Basis"];
+  const TRADE_CODE = { laborer: "LAB", carpenter: "CARP", superintendent: "SUP" };
+  const LEVEL_CODE = { jm: "J", j: "J", fm: "F", f: "F", gfm: "GF", gf: "GF", app: "A", a: "A", nu: "NU" };
+  /** "Laborer" + "FM" -> "#LAB-F"; null when either word is not one the page knows */
+  function classOf(trade, level) {
+    const t = TRADE_CODE[C.norm(trade)], l = LEVEL_CODE[C.norm(level)];
+    if (t === "SUP") return "#SUP";
+    return t && l ? `#${t}-${l}` : null;
+  }
+  const headerIs = (row, want) => { const h = C.headerOf(row || []); return want.every((w, i) => h[i] === w); };
+  function looksLikeWeekly(wb) {
+    return wb.SheetNames.includes(WCD_SHEET) && headerIs(C.rowsOf(wb.Sheets[WCD_SHEET], 1)[0], WCD_COLUMNS);
+  }
+  function readWeekly(wb, fileName) {
+    const main = C.rowsOf(wb.Sheets[WCD_SHEET]);
+    if (!headerIs(main[0], WCD_COLUMNS)) throw new C.UnknownFormat(`${fileName}: the "${WCD_SHEET}" sheet does not carry the weekly cost workbook's columns (${WCD_COLUMNS.join(", ")}).`);
+    const sheets = [{ name: WCD_SHEET, rows: main, start: 1, offset: 0, given: true, col: (k) => WCD_COLUMNS.indexOf(k) }];
+    if (wb.SheetNames.includes(WCD_AUDIT)) {
+      const a = C.rowsOf(wb.Sheets[WCD_AUDIT]);
+      const hi = a.findIndex((r, i) => i < 8 && C.headerOf(r || [])[0] === "Source Row" && headerIs((r || []).slice(1), WCD_COLUMNS));
+      if (hi < 0) throw new C.UnknownFormat(`${fileName}: the "${WCD_AUDIT}" sheet has no header row of Source Row, ${WCD_COLUMNS.join(", ")} in its first 8 rows.`);
+      sheets.push({ name: WCD_AUDIT, rows: a, start: hi + 1, offset: 1, given: false, col: (k) => WCD_COLUMNS.indexOf(k) + 1 });
+    }
+    const rows = [], employees = {}, nameConflicts = [], seen = new Map(), byJob = {}, classes = {};
+    let hoursX100 = 0, blank = 0, duplicates = 0, minDate = null, maxDate = null, costGiven = 0, rowsGiven = 0, auditRows = 0, noClass = 0;
+    for (const sh of sheets) for (let i = sh.start; i < sh.rows.length; i++) {
+      const r = sh.rows[i];
+      if (C.isBlankRow(r)) { blank++; continue; }
+      const excelRow = i + 1, where = `${fileName}: "${sh.name}" row ${excelRow}`;
+      const get = (k) => r[sh.col(k)];
+      const employee_number = C.str(get("Employee #"));
+      if (!employee_number) throw new C.UnknownFormat(`${where} has no Employee #.`);
+      const work_date = C.parseDate(get("Date"));
+      if (!work_date || Number.isNaN(work_date)) throw new C.UnknownFormat(`${where}: Date "${C.str(get("Date"))}" is not a date.`);
+      const week_ending = C.parseDate(get("Week Ending"));
+      if (week_ending && !Number.isNaN(week_ending) && week_ending !== C.sundayOnOrAfter(work_date)) {
+        throw new C.UnknownFormat(`${where}: Week Ending ${C.fmtDay(week_ending)} is not the Sunday on or after ${C.fmtDay(work_date)}; the row is not what the workbook says it is.`);
+      }
+      const job_number = C.str(get("Job #"));
+      if (!job_number) throw new C.UnknownFormat(`${where} has no Job #.`);
+      const pay = C.str(get("Pay Type"));
+      if (!pay) throw new C.UnknownFormat(`${where} has no Pay Type.`);
+      const h = C.toNumber(get("Hours"));
+      if (h == null || Number.isNaN(h)) throw new C.UnknownFormat(`${where}: Hours "${C.str(get("Hours"))}" is not a number.`);
+      const units = Math.round(h * 100);
+      const cost = sh.given ? C.cents(get("Labor Cost")) : null;
+      if (Number.isNaN(cost)) throw new C.UnknownFormat(`${where}: Labor Cost "${C.str(get("Labor Cost"))}" is not money.`);
+      const name = C.oneLine(get("Employee"));
+      if (name) {
+        if (!(employee_number in employees)) employees[employee_number] = name;
+        else if (employees[employee_number] !== name && !nameConflicts.some((c) => c.employee_number === employee_number && c.name === name)) nameConflicts.push({ employee_number, name, first: employees[employee_number] });
+      }
+      const class_given = classOf(get("Trade"), get("Class"));
+      if (class_given) classes[class_given] = (classes[class_given] || 0) + 1; else noClass++;
+      const row = { row_index: sh.offset * 1000000 + excelRow, employee_number, work_date, payroll_group: "", payroll_service_id: "",
+        job_number, job_name: C.oneLine(get("Job Name")), child_job: "", child_job_name: "",
+        cost_code: C.str(get("Cost Code")), cost_code_name: C.oneLine(get("Cost Code Name")), pay_type: pay, pay_type_name: pay, hours_x100: units,
+        cost_given_cents: cost == null ? null : cost, class_given, source_layout: "weeklycostdata" };
+      const key = [employee_number, work_date, job_number, row.cost_code, pay, units, cost].join("\u0001");
+      if (seen.has(key)) duplicates++; else seen.set(key, excelRow);
+      rows.push(row);
+      hoursX100 += units;
+      if (cost != null) { costGiven += cost; rowsGiven++; }
+      if (!sh.given) auditRows++;
+      if (!minDate || work_date < minDate) minDate = work_date;
+      if (!maxDate || work_date > maxDate) maxDate = work_date;
+      const j = byJob[job_number] || (byJob[job_number] = { job_number, job_name: row.job_name, rows: 0, hoursX100: 0 });
+      j.rows++; j.hoursX100 += units;
+    }
+    if (!rows.length) throw new C.UnknownFormat(`${fileName}: "${WCD_SHEET}" has a header and no rows.`);
+    return {
+      kind: "hh2_labor", layout: "weeklycostdata", fileName,
+      range: { start: minDate, end: maxDate }, rangeSource: "data", dataRange: { start: minDate, end: maxDate },
+      rows, employees, nameConflicts, columns: WCD_COLUMNS.length,
+      totals: { rows: rows.length, hoursX100, blank, duplicates, employees: Object.keys(employees).length, costGivenCents: costGiven, rowsGiven, auditRows, classes, noClass },
+      byJob,
+    };
+  }
+
+  /** Does this workbook carry the HH2 sheet and header, or the weekly cost workbook's Labor sheet? (for sniffing) */
   function looksLike(wb) {
+    if (looksLikeWeekly(wb)) return true;
     if (!wb.SheetNames.includes(SHEET)) return false;
     const h = C.headerOf(C.rowsOf(wb.Sheets[SHEET], 1)[0]);
     return h.length >= 3 && h[0] === COLUMNS[0] && h[1] === COLUMNS[1] && h[2] === COLUMNS[2];
@@ -73,6 +157,7 @@
   }
 
   function readWorkbook(wb, fileName = "this file") {
+    if (!wb.SheetNames.includes(SHEET) && looksLikeWeekly(wb)) return readWeekly(wb, fileName);
     if (!wb.SheetNames.includes(SHEET)) {
       throw new C.UnknownFormat(`${fileName} has no "${SHEET}" sheet, so it is not HH2's Labor Detail export ` +
         `(its sheets: ${wb.SheetNames.join(", ")}).`);
@@ -138,7 +223,7 @@
       j.rows++; j.hoursX100 += r.hours_x100;
     }
     return {
-      kind: "hh2_labor", fileName,
+      kind: "hh2_labor", layout: "hh2", fileName,
       range: named || { start: minDate, end: maxDate }, rangeSource: named ? "name" : "data",
       dataRange: { start: minDate, end: maxDate },
       rows, employees, nameConflicts,
@@ -150,5 +235,5 @@
 
   const read = (data, fileName) => readWorkbook(C.readBook(data), fileName);
 
-  return { SHEET, COLUMNS, COLUMNS_CHILD, NAME_RE, rangeFromName, looksLike, readWorkbook, read };
+  return { SHEET, COLUMNS, COLUMNS_CHILD, NAME_RE, WCD_SHEET, WCD_COLUMNS, classOf, rangeFromName, looksLike, looksLikeWeekly, readWorkbook, read };
 }));

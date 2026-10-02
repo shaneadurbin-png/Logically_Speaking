@@ -54,6 +54,12 @@ const ctx = { labor: { rates, employees, policy: {}, jobs }, vendorSettings: {},
     ok(/worked out from Date Rented \+ Number of Days on Rent/.test(notes)); ok(/3 lines carry no quantity/.test(notes)); ok(/3 accounts in one file/.test(notes));
     ok(!/day or week rate/.test(notes), "the no-quantity lines are not called day-or-week lines");
   });
+  await checkAsync("the weekly cost workbook's labor history: ready, priced at its own cost, the new job named", async () => {
+    const c = await Intake.inspect(b("hh2/WeeklyCostData_2026-08-29.xlsx"), "WeeklyCostData_2026-08-29.xlsx", ctx);
+    eq(c.status, "ready"); eq(c.title, "Labor history from the weekly cost workbook, Aug 3, 2026 to Aug 14, 2026");
+    const notes = c.notes.join(" | ");
+    ok(/10 rows carry the workbook's own labor cost \(\$5,012\.00\)/.test(notes), notes); ok(/2 rows from the Labor Audit sheet/.test(notes), notes); ok(/50-60-224162 PHL 104/.test(notes), notes);
+  });
   await checkAsync("the Purchase Pro export: ready, and the POs with no job named, not refused", async () => {
     const c = await Intake.inspect(b("purchases/Tbl_PO1_2026-09-25.xlsx"), "Tbl_PO1_2026-09-25.xlsx", ctx);
     eq(c.status, "ready"); ok(/12 POs/.test(c.stamp));

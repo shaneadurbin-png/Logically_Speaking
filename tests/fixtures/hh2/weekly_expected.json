@@ -1,0 +1,26 @@
+{
+  "file": "WeeklyCostData_2026-08-29.xlsx",
+  "rows": 12,
+  "hoursX100": 6700,
+  "costGivenCents": 501200,
+  "rowsGiven": 10,
+  "auditRows": 2,
+  "duplicates": 1,
+  "employees": 3,
+  "range": {
+    "start": "2026-08-03",
+    "end": "2026-08-14"
+  },
+  "classes": {
+    "#LAB-J": 6,
+    "#CARP-F": 4,
+    "#LAB-GF": 2
+  },
+  "jobs": [
+    "50-60-224162",
+    "50-60-225120",
+    "50-60-225121"
+  ],
+  "newJob": "50-60-224162",
+  "newJobName": "PHL 104"
+}

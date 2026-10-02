@@ -4,9 +4,9 @@ For whoever picks this up next (Cursor, another Claude session, a person). Read 
 
 ## Where things stand
 
-- **Release 0.1.1**, demo mode end to end, no database stood up yet. The page runs from `CostTracker.html` by double-click (file://) with `app/db_local.js` standing in for Supabase.
+- **Release 0.1.2**, demo mode end to end, no database stood up yet. The page runs from `CostTracker.html` by double-click (file://) with `app/db_local.js` standing in for Supabase.
 - **The weekly package reads end to end.** Shane's "Weekly Cost Reporting 10.2.26" folder (twelve real files) was run through intake: HH2 Labor Detail ×2, five Sage Job Cost To Dates, United Rentals All Jobs (.XLS), Herc summary (.xlsx), Sunbelt all-jobs (.csv), EquipmentShare On Rent Report (.csv), Purchase Pro Tbl_PO1 (.xlsx). All twelve are "ready". None of those files is in the repo (it is public); the fixtures under `tests/fixtures/` are synthetic copies of each layout's real header.
-- **Tests:** `node tests/run_all.js` (149 checks), `bash tests/db/run.sh` (152 pgTAP checks on a throwaway local Postgres; `PGURL=...` to point at another), `BASE=file:///path/to/repo node tests/smoke_browser.js` (69 Playwright checks; needs `npm install --no-save playwright@1.56.1`). CI runs all three (`.github/workflows/test.yml`).
+- **Tests:** `node tests/run_all.js` (155 checks), `bash tests/db/run.sh` (158 pgTAP checks on a throwaway local Postgres; `PGURL=...` to point at another), `BASE=file:///path/to/repo node tests/smoke_browser.js` (70 Playwright checks; needs `npm install --no-save playwright@1.56.1`). CI runs all three (`.github/workflows/test.yml`).
 - **Fixtures and generated tests:** `node tests/fixtures/make_fixtures.js` writes every fixture and `expected.json` (a spec, not a copy of output); `node tests/db/make_db_tests.js` writes `supabase/tests/03..07_*.sql` from the same fixtures so SQL and JS are held to the same numbers. Run both after touching a fixture; commit the outputs.
 
 ## House rules (do not drift)
@@ -30,6 +30,9 @@ For whoever picks this up next (Cursor, another Claude session, a person). Read 
 - Purchase Pro's Tbl_PO has no primary key. A PO with no job never refuses (quotes are left out, live orders wait). A PO number can sit on two orders, an OrderID on a quote and the order it became, and one order came twice: nothing refuses, every row is kept, every order whose number is on more than one row waits for a decision, and a decision carries across exports by number AND OrderID (`app.purchase_docs_resolved`, migration 0014).
 - A month with no on-rent report by its last day takes the first report after it, within seven days (`rentals_model.snapshotForMonth`, migration 0015). The package is pulled a day or two into the next month.
 - Prefix defaults (FB5 → Laborer journeyman ...) are a setting (`prefix_classes`, 0013), editable on Settings › Employees.
+- The weekly cost workbook's `Labor` sheet is the labor history (L-33, 0016): loaded once, each row priced at the cost the workbook gave it (`cost_given_cents`, `price_source = 'given'`) with the class it carried (`class_given`); the `Labor Audit` sheet's PTO rows are held. Jobs seen on time sheets are catalogued on Record (L-34). The weekly HH2 files add to the baseline.
+- The per-project review Shane wants (his dashboard HTML of week ending 9/20): a campus/project and week-ending filter; Labor: total labor cost, REG/OT/DT hours, headcount, cost by cost code name (top 12, the selected week), labor by employee (editors), hours by week for the last four weeks by trade; Rentals: monthly and weekly (÷ 4.33) burdened cost, items on rent, equipment by description, cost by vendor, cost by category (top 8); POs: committed this week, last week, MTD, YTD, the PO table, committed by week ending for four weeks. Build it as the Report page's by-week view (plan item 11 above), one job or all.
+- TimberScan (Sage AP approval) has a "Job Cost Invoices Inquiry" grid with Export To Excel: invoices in flight with vendor, invoice, type, and distribution (commitment, job, cost code, category, amount). Once a sample lands, a reader for it closes the gap open = committed − posted − in TimberScan and ties invoices to POs by commitment number.
 
 ## The approved next plan: Purchase Pro's back end as a feed
 

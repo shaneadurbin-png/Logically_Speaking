@@ -13,7 +13,7 @@
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig;
-  const RELEASE = "0.1.1";
+  const RELEASE = "0.1.2";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

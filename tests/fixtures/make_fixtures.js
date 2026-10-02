@@ -117,6 +117,41 @@ write("hh2/expected.json", JSON.stringify({
   rowStatus,
 }, null, 2));
 
+// ---- the weekly cost workbook's Labor sheet: the labor history, priced by the old workbook ----
+{
+  const WH = ["Week Ending", "Date", "Employee", "Employee #", "Trade", "Class", "Job #", "Job Name", "Cost Code", "Cost Code Name", "Pay Type", "Hours", "Labor Cost", "Labor Cost - Basis"];
+  const PHL = "50-60-224162";
+  const wrow = (d, emp, name, trade, cls, job, jobName, cc, ccName, pt, h, cost) => [dateCell(C.sundayOnOrAfter(d)), dateCell(d), name, emp, trade, cls, job, jobName, cc, ccName, pt, h, cost == null ? "" : cost, cost == null ? "" : "rate x hours"];
+  const W = [
+    wrow("2026-08-03", "FB52001", "Ortiz; Dana", "Laborer", "JM", DC4, "CDR DC4", "01-01-0010", "General Labor/Clean UP", "REG", 8, 698),
+    wrow("2026-08-03", "FB52001", "Ortiz; Dana", "Laborer", "JM", DC4, "CDR DC4", "01-01-0010", "General Labor/Clean UP", "O/T", 2, 240),
+    wrow("2026-08-04", "FB52001", "Ortiz; Dana", "Laborer", "JM", DC4, "CDR DC4", "01-01-0010", "General Labor/Clean UP", "REG", 8, 698),
+    wrow("2026-08-04", "FB82001", "Kim; Soo", "Carpenter", "FM", DC5, "CDR DC5", "01-02-0001", "Construction Materials DC", "REG", 8, 900),
+    wrow("2026-08-05", "FB82001", "Kim; Soo", "Carpenter", "FM", DC5, "CDR DC5", "01-02-0001", "Construction Materials DC", "D/T", 1, 180),
+    wrow("2026-08-05", "FB52002", "Nair; Ravi", "Laborer", "GFM", PHL, "PHL 104", "01-01-0010", "General Labor/Clean UP", "REG", 8, 820),
+    wrow("2026-08-06", "FB52002", "Nair; Ravi", "Laborer", "GFM", PHL, "PHL 104", "01-01-0010", "General Labor/Clean UP", "REG", -8, -820),   // an adjustment, kept
+    wrow("2026-08-10", "FB52001", "Ortiz; Dana", "Laborer", "JM", DC4, "CDR DC4", "01-01-0010", "General Labor/Clean UP", "REG", 8, 698),
+    wrow("2026-08-10", "FB52001", "Ortiz; Dana", "Laborer", "JM", DC4, "CDR DC4", "01-01-0010", "General Labor/Clean UP", "REG", 8, 698),   // the workbook's own split entry
+    wrow("2026-08-12", "FB82001", "Kim; Soo", "Carpenter", "FM", DC5, "CDR DC5", "01-02-0001", "Construction Materials DC", "REG", 8, 900),
+  ];
+  const A = [
+    ["Labor Cost Rate Lookup — Unmatched Rows (moved from Labor tab)"], ["These rows have no entry in BillableRates (all non-worked pay types)."], [],
+    ["Source Row"].concat(WH),
+    [41].concat(wrow("2026-08-07", "FB52001", "Ortiz; Dana", "Laborer", "JM", DC4, "CDR DC4", "01-01-0010", "General Labor/Clean UP", "Vacation", 8, null)),
+    [42].concat(wrow("2026-08-14", "FB82001", "Kim; Soo", "Carpenter", "FM", DC5, "CDR DC5", "01-02-0001", "Construction Materials DC", "Holiday", 8, null)),
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["Turn #", "Date", "User Request"]]), "Claude Log");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([WH].concat(W), { cellDates: true }), "Labor");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(A, { cellDates: true }), "Labor Audit");
+  write("hh2/WeeklyCostData_2026-08-29.xlsx", XLSX.write(wb, { type: "buffer", bookType: "xlsx", cellDates: true }));
+  const bad = W.map((r) => r.slice()); bad[2][0] = dateCell("2026-08-16");   // a Week Ending that is not the Sunday on or after its date
+  const wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, XLSX.utils.aoa_to_sheet([WH].concat(bad), { cellDates: true }), "Labor");
+  write("hh2/bad/WeeklyCostData_badweek.xlsx", XLSX.write(wb2, { type: "buffer", bookType: "xlsx", cellDates: true }));
+  write("hh2/weekly_expected.json", JSON.stringify({ file: "WeeklyCostData_2026-08-29.xlsx", rows: 12, hoursX100: 6700, costGivenCents: 501200, rowsGiven: 10, auditRows: 2, duplicates: 1, employees: 3,
+    range: { start: "2026-08-03", end: "2026-08-14" }, classes: { "#LAB-J": 6, "#CARP-F": 4, "#LAB-GF": 2 }, jobs: [DC4, DC5, PHL].sort(), newJob: PHL, newJobName: "PHL 104" }, null, 2));
+}
+
 // ---- On-rent reports (the page's own CSV layout) -------------------------------
 const OH = ["Vendor", "Equipment #", "Contract #", "Job", "Description", "Qty", "On Rent Date", "Rate Period", "Rate", "Monthly Rent"];
 const q = (v) => (v == null ? "" : /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v));

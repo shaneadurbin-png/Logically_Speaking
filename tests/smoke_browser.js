@@ -40,7 +40,7 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   await page.waitForSelector("#files", { state: "attached" });
   const files = [
     F("rates/Sage_Rate_Tables_2026.xlsx"), F("projects/Projects.xlsx"),
-    F("hh2/LaborDetails_9_1_2026_to_9_30_2026.xlsx"),
+    F("hh2/LaborDetails_9_1_2026_to_9_30_2026.xlsx"), F("hh2/WeeklyCostData_2026-08-29.xlsx"),
     F("onrent/sunbelt_2026-09-19.csv"), F("onrent/sunbelt_2026-09-26.csv"), F("onrent/sunbelt_account_export.csv"), F("onrent/Equipment on Rent - All Jobs.csv"),
     F("onrent/Equipment_On_Rent_Summary-06-24-2026_175716.xlsx"), F("onrent/Equipment_On_Rent_-_All_Jobs_2026-09-26-08.00.00.xlsx"),
     F("onrent/EquipShare_rentals-export_9.4.26.csv"), F("onrent/On Rent Report_ES.csv"), F("onrent/mcw_2026-09-26.csv"),
@@ -52,7 +52,8 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   const cards = await page.$$eval(".filecard", (els) => els.map((e) => ({ status: Array.from(e.classList).find((c) => ["ready", "needs-decision", "refused", "already-on-file", "recorded", "skipped"].includes(c)), title: e.querySelector("b").textContent, stamp: (e.querySelector(".stamp") || {}).textContent || "", reason: (e.querySelector("p") || {}).textContent || "" })));
   for (const c of cards) console.log(`    [${c.status}] ${c.title} :: ${c.stamp} ${c.reason.slice(0, 110)}`);
   const by = (s) => cards.filter((c) => c.status === s).length;
-  check(by("ready") === 15, `15 cards ready (got ${by("ready")})`);
+  check(by("ready") === 16, `16 cards ready (got ${by("ready")})`);
+  check(cards.some((c) => c.title === "Labor history from the weekly cost workbook, Aug 3, 2026 to Aug 14, 2026"), "the weekly cost workbook's Labor sheet reads as the labor history");
   check(cards.some((c) => c.title === "EquipmentShare on-rent report, as of Oct 2, 2026" && /5 on rent/.test(c.stamp)), "EquipmentShare's On Rent Report reads, dated from its own lines");
   check(cards.some((c) => c.title === "Sunbelt Rentals on-rent report, as of Oct 2, 2026" && /8 on rent/.test(c.stamp)), "Sunbelt's all-jobs export reads, dated from its own lines");
   check(cards.some((c) => c.title.startsWith("Job Cost To Date, DC4") && /6 recurring charges \(3 off feed\)/.test(c.stamp)), "the JCTD card counts the recurring charges it found");
@@ -65,14 +66,14 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   await page.fill("form.asof input[name=as_of]", "2026-09-26");
   await page.click("form.asof button");
   await page.waitForFunction(() => !document.querySelector("form.asof"));
-  check((await page.$$(".filecard.ready")).length === 16, "answering the as-of makes 16 ready");
+  check((await page.$$(".filecard.ready")).length === 17, "answering the as-of makes 17 ready");
 
   // ---- Record ----------------------------------------------------------------------
   await page.click("#record");
   await page.waitForFunction(() => document.querySelectorAll(".filecard.ready").length === 0 && !document.body.textContent.includes("Recording…"), null, { timeout: 60000 });
   const after = await page.$$eval(".filecard", (els) => els.map((e) => ({ status: Array.from(e.classList).find((c) => ["ready", "needs-decision", "refused", "already-on-file", "recorded"].includes(c)), title: e.querySelector("b").textContent, reason: (e.querySelector("p") || {}).textContent || "" })));
   for (const c of after) console.log(`    [${c.status}] ${c.title} :: ${c.reason.slice(0, 120)}`);
-  check(after.filter((c) => c.status === "recorded").length === 16, "16 files recorded");
+  check(after.filter((c) => c.status === "recorded").length === 17, "17 files recorded");
   check(after.some((c) => c.title.startsWith("Sage rate tables") && /rates added/.test(c.reason) && /Newly assigned: 110 #224050/.test(c.reason)), "the Sage card says how many rates were added and that the register's new job got its table");
   check((await text("header.top")).includes("HH2 through"), "the header chips refresh after Record");
   await shot("03-update-recorded");

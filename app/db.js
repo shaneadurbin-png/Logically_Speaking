@@ -63,7 +63,7 @@
       try { await sb.storage.from("uploads").upload(storage_path, card.bytes, { upsert: false, contentType: "application/octet-stream" }); } catch (e) { /* the bytes are optional; the lines are the record */ }
       if (doc.kind === "hh2_labor") {
         const b = await self.rpc("begin_upload", { p_workspace: self.ws, p_kind: "hh2_labor", p_sha256: card.sha256, p_file_name: card.name, p_byte_size: card.size,
-          p_meta: { period: doc.range, employees: Object.keys(doc.employees), summary: { rows: doc.totals.rows, hours_x100: doc.totals.hoursX100, duplicates: doc.totals.duplicates }, storage_path } });
+          p_meta: { period: doc.range, employees: Object.keys(doc.employees), summary: { rows: doc.totals.rows, hours_x100: doc.totals.hoursX100, duplicates: doc.totals.duplicates, layout: doc.layout || "hh2", cost_given_cents: doc.totals.costGivenCents || 0 }, storage_path } });
         if (b.existing) return { status: "existing", existing: b };
         if (b.overlaps && b.overlaps.length && !(opts.supersede && opts.supersede.reason)) return { status: "needs-supersede", overlaps: b.overlaps, upload_id: b.upload_id };
         const rows = doc.rows;
@@ -76,6 +76,11 @@
         const emp = Object.entries(doc.employees).map(([employee_number, name]) => ({ employee_number, name }));
         for (let i = 0; i < emp.length; i += BATCH) {
           await sb.from("employees").upsert(emp.slice(i, i + BATCH).map((r) => Object.assign({ workspace_id: self.ws }, r)), { onConflict: "workspace_id,employee_number", ignoreDuplicates: true });
+        }
+        // jobs seen on the time sheets are catalogued with their names; campus and rate table are set in Settings or by the Projects register
+        const jobsSeen = Object.values(doc.byJob || {}).filter((j) => /^\d{2}-\d{2}-\d{6}$/.test(j.job_number)).map((j) => ({ job_number: j.job_number, short_name: j.job_name || j.job_number, name: j.job_name || null }));
+        for (let i = 0; i < jobsSeen.length; i += BATCH) {
+          try { await sb.from("jobs").upsert(jobsSeen.slice(i, i + BATCH).map((r) => Object.assign({ workspace_id: self.ws }, r)), { onConflict: "workspace_id,job_number", ignoreDuplicates: true }); } catch (e) { /* a job the table refuses waits in Settings */ }
         }
         progress(1);
         return { status: "recorded", upload: fin };

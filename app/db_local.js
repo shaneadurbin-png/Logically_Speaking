@@ -125,6 +125,11 @@
         if (overlaps.length && !(opts.supersede && opts.supersede.reason)) return { status: "needs-supersede", overlaps: overlaps.map((x) => ({ upload_id: x.id, file_name: x.file_name, period_start: x.period_start, period_end: x.period_end, rows: x.summary.rows })) };
         for (const o of overlaps) { o.status = "superseded"; o.superseded_by = u.id; o.supersede_reason = opts.supersede.reason; }
         for (const r of doc.rows) S.labor.push(Object.assign({ upload_id: u.id }, r));
+        // jobs seen on the time sheets are catalogued with their names
+        for (const j of Object.values(doc.byJob || {})) if (/^\d{2}-\d{2}-\d{6}$/.test(j.job_number) && !S.jobs.some((x) => x.job_number === j.job_number)) {
+          S.jobs.push({ workspace_id: WS, job_number: j.job_number, short_name: j.job_name || j.job_number, name: j.job_name || null, campus: null, region: null, rate_table_code: null, tax_bp: 700, markup_bp: 1000, markup_base: "rent_plus_tax", active: true });
+          extra.jobs_added = (extra.jobs_added || 0) + 1;
+        }
         for (const [employee_number, name] of Object.entries(doc.employees)) if (!S.employees.some((e) => e.employee_number === employee_number)) S.employees.push({ workspace_id: WS, employee_number, name, certified_class: null });
       } else if (doc.kind === "onrent") {
         u.vendor_key = doc.vendor_key; u.as_of = doc.as_of; u.summary = { lines: doc.totals.lines, rent_cents: doc.totals.rent_cents };

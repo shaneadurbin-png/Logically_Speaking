@@ -81,12 +81,19 @@
     const lab = ctx.labor || {};
     const priced = L.price(doc.rows, { rates: lab.rates || [], employees: lab.employees || {}, policy: lab.policy || {}, jobs: lab.jobs || [], prefixes: lab.prefixes });
     const summary = L.summarize(priced);
+    const weekly = doc.layout === "weeklycostdata", t = doc.totals;
+    const known = new Set((lab.jobs || []).map((j) => j.job_number));
+    const newJobs = Object.values(doc.byJob || {}).filter((j) => !known.has(j.job_number));
     Object.assign(card, {
       status: "ready", doc, priced, summary, stamp: L.stamp(summary),
-      period: doc.range, title: `HH2 labor, ${C.fmtDay(doc.range.start)} to ${C.fmtDay(doc.range.end)}`,
+      period: doc.range, title: weekly ? `Labor history from the weekly cost workbook, ${C.fmtDay(doc.range.start)} to ${C.fmtDay(doc.range.end)}` : `HH2 labor, ${C.fmtDay(doc.range.start)} to ${C.fmtDay(doc.range.end)}`,
       notes: [].concat(
-        doc.totals.duplicates ? [`${doc.totals.duplicates} exact duplicate row${doc.totals.duplicates > 1 ? "s" : ""} kept (HH2 writes real split entries)`] : [],
-        doc.rangeSource === "data" ? ["the name carries no range; the rows' own dates are used"] : [],
+        weekly ? [`${C.fmtInt(t.rowsGiven)} rows carry the workbook's own labor cost (${C.fmtMoney(t.costGivenCents)}) and are taken as priced; the weekly HH2 files add to this baseline`] : [],
+        weekly && t.auditRows ? [`${C.fmtInt(t.auditRows)} rows from the Labor Audit sheet (PTO and unmatched) are held by the page's own rules`] : [],
+        weekly && Object.keys(t.classes || {}).length ? [`classes as the workbook carried them stay on these rows: ${Object.entries(t.classes).map(([c, n]) => `${L.classLabel(c)} ${C.fmtInt(n)}`).join(", ")}${t.noClass ? `; ${t.noClass} rows with a trade or class the page does not know take the person's class` : ""}`] : [],
+        newJobs.length ? [`${newJobs.length} job${newJobs.length > 1 ? "s" : ""} not in Settings (${newJobs.slice(0, 5).map((j) => `${j.job_number}${j.job_name ? " " + j.job_name : ""}`).join(", ")}${newJobs.length > 5 ? ", ..." : ""}); added with their names on Record, campus and rate table to be set`] : [],
+        doc.totals.duplicates ? [`${doc.totals.duplicates} exact duplicate row${doc.totals.duplicates > 1 ? "s" : ""} kept (${weekly ? "the workbook's own split entries" : "HH2 writes real split entries"})`] : [],
+        doc.rangeSource === "data" && !weekly ? ["the name carries no range; the rows' own dates are used"] : [],
         doc.nameConflicts.length ? [`${doc.nameConflicts.length} employee number${doc.nameConflicts.length > 1 ? "s" : ""} carr${doc.nameConflicts.length > 1 ? "y" : "ies"} two names`] : []),
       conservation: { rows: doc.totals.rows, hours_x100: doc.totals.hoursX100 },
     });

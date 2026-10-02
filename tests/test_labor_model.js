@@ -46,6 +46,17 @@ check("the prefix defaults are a setting: rows from Settings read, the longest l
   const fe = L.price(doc.rows, Object.assign({}, ctx, { prefixes: [{ prefix: "FB1", certified_class: "#LAB-J" }].concat(Object.entries(L.PREFIX_CLASS).map(([prefix, certified_class]) => ({ prefix, certified_class }))) }));
   ok(fe.filter((r) => r.employee_number.startsWith("FB1")).every((r) => r.status !== "held:no class"), "listing FB1 takes its rows out of no class");
 });
+check("a row with the workbook's own cost is priced at that cost, with the class it carried; the rest still go to the rate tables", () => {
+  const given = [
+    { row_index: 1, employee_number: "FB5001", work_date: "2026-08-03", job_number: "50-60-225121", cost_code: "01-02-0001", pay_type: "REG", pay_type_name: "REG", hours_x100: 800, cost_given_cents: 69800, class_given: "#LAB-F" },
+    { row_index: 2, employee_number: "FB5001", work_date: "2026-08-07", job_number: "50-60-225121", cost_code: "01-02-0001", pay_type: "Vacation", pay_type_name: "Vacation", hours_x100: 800, cost_given_cents: null, class_given: "#LAB-F" },
+    { row_index: 3, employee_number: "FB5001", work_date: "2026-08-07", job_number: "50-61-000001", cost_code: "01-02-0001", pay_type: "REG", pay_type_name: "REG", hours_x100: 800, cost_given_cents: 69800, class_given: "#LAB-F" }];
+  const p = L.price(given, ctx);
+  eq(p[0].status, "priced"); eq(p[0].cost_cents, 69800); eq(p[0].price_source, "given"); eq(p[0].certified_class, "#LAB-F"); eq(p[0].rate_cents, null);
+  eq(p[1].status, "held:PTO pay type"); eq(p[1].price_source, null);
+  eq(p[2].status, "held:unknown job", "a job Settings does not know still holds, cost or no cost");
+  eq(priced.find((x) => x.status === "priced").price_source, "rate");
+});
 check("class codes read as words", () => {
   eq(L.classLabel("#CARP-GF"), "Carpenter General Foreman"); eq(L.classLabel("#LAB-J"), "Laborer Journeyman"); eq(L.classLabel("#SUP"), "Superintendent"); eq(L.classLabel("#LAB-NU"), "Laborer Non-union");
 });

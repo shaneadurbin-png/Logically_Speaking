@@ -42,7 +42,7 @@
     const first = C.rowsOf(wb.Sheets[wb.SheetNames[0]], 25);
     const m = V.match(first);
     if (m) return { kind: "onrent", wb, layout: m.layout.layout };
-    throw new C.NotForThisPage(`${fileName} is not a layout this page reads: not HH2's Labor Detail export (sheet "${HH2.SHEET}"), ` +
+    throw new C.NotForThisPage(`${fileName} is not a layout this page reads: not HH2's Labor Detail export (sheet "${HH2.SHEET}", or the weekly cost workbook's "${HH2.WCD_SHEET}" sheet), ` +
       `not a Sage rate table export, not a Purchase Pro PO export, not a Job Cost To Date export, not a Projects register, and not an on-rent report (${V.LAYOUTS.filter((l) => l.confirmed).map((l) => l.name).join(", ")}). ` +
       `Its sheets: ${wb.SheetNames.slice(0, 6).join(", ")}.`);
   }

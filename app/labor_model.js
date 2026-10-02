@@ -92,15 +92,18 @@
     const prefixes = prefixMap(ctx.prefixes);
     return rows.map((r) => {
       const e = employees[r.employee_number] || {};
-      const cclass = e.certified_class || classFromPrefix(r.employee_number, prefixes);
+      // the class the row itself carries (the labor history) stands for that row; else the person's; else the prefix
+      const cclass = r.class_given || e.certified_class || classFromPrefix(r.employee_number, prefixes);
       const out = Object.assign({}, r, { certified_class: cclass, class_label: cclass ? classLabel(cclass) : null, week_ending: weekEnding(r.work_date),
-        rate_table_code: null, status: "priced", reason: "", rate_cents: null, cost_cents: null });
+        rate_table_code: null, status: "priced", reason: "", rate_cents: null, cost_cents: null, price_source: null });
       const pol = policyOf(r.pay_type_name, ctx.policy);
       const job = jobs.get(r.job_number);
       if (!job) return held(out, "unknown job", `${r.job_number} is not a job in Settings`);
       out.rate_table_code = job.rate_table_code || null;
       if (pol === "excluded") { out.status = "excluded"; out.reason = `${r.pay_type_name} is excluded by policy`; return out; }
       if (pol === "held_pto") return held(out, "PTO pay type", `${r.pay_type_name} has no billable rate`);
+      // the labor history: the cost the old workbook gave the row is taken as its cost
+      if (r.cost_given_cents != null) { out.cost_cents = r.cost_given_cents; out.price_source = "given"; return out; }
       if (!job.rate_table_code) return held(out, "no rate table", `job ${r.job_number} has no rate table assigned in Settings`);
       if (!cclass) return held(out, "no class", `employee ${r.employee_number} has no certified class in Settings and no known prefix`);
       const rate = findRate(ctx.rates, job.rate_table_code, cclass, r.pay_type, r.work_date);
@@ -108,6 +111,7 @@
       out.rate_cents = rate.rate_cents;
       out.rate_id = rate.id || null;
       out.cost_cents = C.roundHalfUp(r.hours_x100 * rate.rate_cents / 100);
+      out.price_source = "rate";
       return out;
     });
   }
