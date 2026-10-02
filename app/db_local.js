@@ -21,7 +21,7 @@
       vendor_job_map: [["united_rentals", "CDR-SCCI-DC4", "50-60-225121"], ["united_rentals", "CDR-SCCI-DC5", "50-60-225120"], ["united_rentals", "CDR-SCCI-DC7", "50-60-226021"], ["united_rentals", "CDR-SCCI-SITE", "50-60-225104"],
         ["sunbelt", "LIBERTY - CEDAR RAPIDS LT1", "50-60-225104"], ["sunbelt", "QTS DC4", "50-60-225121"]].map(([vendor_key, vendor_job_ref, job_number]) => ({ workspace_id: WS, vendor_key, vendor_job_ref, job_number })),
       rate_tables: JOBS.map(([, , name, code]) => ({ workspace_id: WS, code, description: name + " (Iowa CBA, demo)", source_file: null })),
-      billable_rates: [], employees: [], pay_type_policy: L.PTO_PAY_TYPES.map((p) => ({ workspace_id: WS, pay_type_name: p, policy: "held_pto" })),
+      billable_rates: [], employees: [], prefix_classes: Object.entries(L.PREFIX_CLASS).map(([prefix, certified_class]) => ({ workspace_id: WS, prefix, certified_class })), pay_type_policy: L.PTO_PAY_TYPES.map((p) => ({ workspace_id: WS, pay_type_name: p, policy: "held_pto" })),
       members: [{ workspace_id: WS, email: "you@demo", role: "owner", display_name: "Demo editor" }],
       uploads: [], labor: [], snapshots: [], poExports: [], purchase_decisions: [], jctd: [], recurring_charges: [], recurring_dismissals: [], audit: [],
       waste_vendors: [{ id: "wv-1", workspace_id: WS, pattern: "sourgum", name: "Sourgum Waste", bills_per_haul: true, haul_rate_cents: 68500, container_yd: 30 }, { id: "wv-2", workspace_id: WS, pattern: "waste management", name: "Waste Management", bills_per_haul: false, haul_rate_cents: null, container_yd: 40 }],
@@ -33,7 +33,7 @@
     self.session = async () => self.user; self.sendCode = async () => ({}); self.verify = async () => self.user; self.signOut = async () => {};
     self.loadWorkspaces = async () => self.workspaces; self.use = () => self.workspaces[0]; self.canEdit = () => true; self.memberName = async () => "Demo editor";
     const live = () => S.uploads.filter((u) => u.status === "recorded" && !u.superseded_by);
-    const ctx = () => ({ rates: S.billable_rates, employees: Object.fromEntries(S.employees.map((e) => [e.employee_number, e])), policy: Object.fromEntries(S.pay_type_policy.map((p) => [p.pay_type_name, p.policy])), jobs: S.jobs });
+    const ctx = () => ({ rates: S.billable_rates, employees: Object.fromEntries(S.employees.map((e) => [e.employee_number, e])), prefixes: L.prefixMap(S.prefix_classes), policy: Object.fromEntries(S.pay_type_policy.map((p) => [p.pay_type_name, p.policy])), jobs: S.jobs });
     const jobMap = () => { const m = {}; for (const x of S.vendor_job_map) (m[x.vendor_key] = m[x.vendor_key] || {})[x.vendor_job_ref] = x.job_number; return m; };
     const rentalSettings = () => ({ vendors: Object.fromEntries(S.vendors.map((v) => [v.vendor_key, v])), jobs: Object.fromEntries(S.jobs.map((j) => [j.job_number, j])) });
     const priced = () => L.price(S.labor.filter((r) => live().some((u) => u.id === r.upload_id)), ctx());
@@ -74,7 +74,7 @@
     const VIEWS = {
       waste_vendors: () => S.waste_vendors, dumpster_pulls: () => S.dumpster_pulls, v_site_services_month: siteServicesMonth, v_trailer_plex_month: trailerPlexMonth, v_dumpster_month: dumpsterMonth,
       jctd_lines: liveJctd, recurring_charges: () => S.recurring_charges, recurring_dismissals: () => S.recurring_dismissals, v_recurring_candidates: recurringCandidates, v_recurring_month: recurringMonth,
-      jobs: () => S.jobs, vendors: () => S.vendors, vendor_job_map: () => S.vendor_job_map, rate_tables: () => S.rate_tables, billable_rates: () => S.billable_rates, employees: () => S.employees,
+      jobs: () => S.jobs, vendors: () => S.vendors, vendor_job_map: () => S.vendor_job_map, rate_tables: () => S.rate_tables, billable_rates: () => S.billable_rates, employees: () => S.employees, prefix_classes: () => S.prefix_classes,
       pay_type_policy: () => S.pay_type_policy, members: () => S.members, uploads: () => S.uploads, audit_log: () => S.audit, purchase_decisions: () => S.purchase_decisions, v_uploads_live: live,
       v_labor_priced: () => priced().map((r) => Object.assign({ workspace_id: WS, hours: r.hours_x100 / 100 }, r)),
       v_labor_job_month: () => { const m = {}; for (const r of priced()) { const k = r.job_number + "|" + C.monthOf(r.work_date); const g = m[k] || (m[k] = { workspace_id: WS, job_number: r.job_number, month: C.monthOf(r.work_date) + "-01", rows_n: 0, hours: 0, priced_hours: 0, cost_cents: 0, held_hours: 0, held_rows: 0, through: null }); g.rows_n++; g.hours += r.hours_x100 / 100; if (r.status === "priced") { g.priced_hours += r.hours_x100 / 100; g.cost_cents += r.cost_cents; } if (r.status.startsWith("held:")) { g.held_hours += r.hours_x100 / 100; g.held_rows++; } if (!g.through || r.work_date > g.through) g.through = r.work_date; } return Object.values(m); },
@@ -100,6 +100,7 @@
       if (table === "recurring_charges") { if (r.monthly_cents < 0 || !r.start_month || (r.end_month && r.end_month < r.start_month)) throw new Error("a recurring charge needs an amount and a first month before its last"); Object.assign(r, { units: r.units || 1, liberty_owned: !!r.liberty_owned, amount_includes_tax: r.amount_includes_tax !== false, source: r.source || "jctd", confirmed_by: "demo", confirmed_at: new Date().toISOString() }); }
       if (table === "recurring_dismissals") { if (!r.reason) throw new Error("say why it is not a rental"); Object.assign(r, { decided_by: "demo", decided_at: new Date().toISOString() }); }
       if (table === "dumpster_pulls") { if (!r.job_number || !r.pull_date || !r.vendor_name || !(+r.pulls > 0)) throw new Error("a pull needs a job, a date, a hauler and a count"); Object.assign(r, { pulls: +r.pulls, entered_by: "demo", entered_at: new Date().toISOString() }); }
+      if (table === "prefix_classes") { r.prefix = String(r.prefix || "").trim().toUpperCase(); if (!r.prefix) throw new Error("say the prefix: the first letters of the employee number"); if (!r.certified_class) throw new Error("pick the class"); if (S.prefix_classes.some((p) => p.prefix === r.prefix)) throw new Error(`${r.prefix} is already listed; change it there`); }
       if (table === "waste_vendors") { if (!r.pattern) throw new Error("say what to match in the hauler's name"); if (S.waste_vendors.some((w) => w.pattern.toLowerCase() === String(r.pattern).toLowerCase())) throw new Error("that hauler is already listed"); r.pattern = String(r.pattern).toLowerCase(); }
       S[table].push(r); log(table, "INSERT", r); return [r]; };
     self.upsert = async (table, rows, onConflict) => { const keys = onConflict.split(",").map((k) => k.trim()).filter((k) => k !== "workspace_id"); const out = []; for (const row of rows) { const ex = S[table].find((x) => keys.every((k) => x[k] === row[k])); if (ex) Object.assign(ex, row); else S[table].push(Object.assign({ id: uuid(), workspace_id: WS }, row)); out.push(ex || row); log(table, ex ? "UPDATE" : "INSERT", row); } return out; };

@@ -95,16 +95,17 @@
   // ---- shared data ------------------------------------------------------------------------
   async function loadSettings() {
     const db = st.db;
-    const [jobs, vendors, map, tables, rates, employees, policy, members, wasteVendors] = await Promise.all([
+    const [jobs, vendors, map, tables, rates, employees, policy, members, wasteVendors, prefixes] = await Promise.all([
       db.view("jobs", {}, { order: "job_number" }), db.view("vendors", {}, { order: "vendor_key" }), db.view("vendor_job_map"),
       db.view("rate_tables", {}, { order: "code" }), db.view("billable_rates"),
-      db.canEdit() ? db.view("employees") : Promise.resolve([]), db.view("pay_type_policy"), db.view("members").catch(() => []), db.view("waste_vendors").catch(() => [])]);
+      db.canEdit() ? db.view("employees") : Promise.resolve([]), db.view("pay_type_policy"), db.view("members").catch(() => []), db.view("waste_vendors").catch(() => []),
+      db.view("prefix_classes", {}, { order: "prefix" }).catch(() => [])]);
     const jobMap = {};
     for (const m of map) (jobMap[m.vendor_key] = jobMap[m.vendor_key] || {})[m.vendor_job_ref] = m.job_number;
     const live = rates.filter((r) => !r.retired_at).map((r) => Object.assign({}, r, r.effective && !r.effective_from ? rangeOf(r.effective) : {}));
     const jobByNumber = Object.fromEntries(jobs.map((j) => [j.job_number, j]));
     const vendorByKey = Object.fromEntries(vendors.map((v) => [v.vendor_key, v]));
-    return { jobs, vendors, jobMap, tables, rates: live, allRates: rates, employees, policy, members, wasteVendors, jobByNumber, vendorByKey,
+    return { jobs, vendors, jobMap, tables, rates: live, allRates: rates, employees, policy, members, wasteVendors, prefixes, prefixMap: L.prefixMap(prefixes), jobByNumber, vendorByKey,
       // the shape rentals_model.settingsFor reads: tax and markup are the job's, taxable is the vendor's
       rental: { vendors: vendorByKey, jobs: jobByNumber } };
   }
@@ -115,7 +116,7 @@
   const classLabel = (c) => (c ? `${L.classLabel(c)} (${c})` : "(no class)");
   const intakeCtx = () => ({
     labor: { rates: st.settings.rates, employees: Object.fromEntries(st.settings.employees.map((e) => [e.employee_number, e])),
-      policy: Object.fromEntries(st.settings.policy.map((p) => [p.pay_type_name, p.policy])), jobs: st.settings.jobs },
+      policy: Object.fromEntries(st.settings.policy.map((p) => [p.pay_type_name, p.policy])), jobs: st.settings.jobs, prefixes: st.settings.prefixMap },
     vendorSettings: st.settings.rental, jobMap: st.settings.jobMap, existing: (sha) => st.db.existing(sha), asOf: st.asOf || {}, wasteVendors: st.settings.wasteVendors,
   });
 
@@ -533,9 +534,15 @@
       else {
         const held = await st.db.view("v_labor_held", { status: "held:no class" });
         const noClass = new Set(held.map((h) => h.employee_number));
-        body = html`<p class="muted small">The certified class comes from the employee number's prefix (FB2, FB5 and TTR are Laborer journeymen; FB7 and FB8 Carpenter journeymen) unless set here: a foreman, a general foreman, an apprentice, a superintendent, or a prefix the page does not know. Names stay on this tab; nowhere else, and never for viewers.</p>
+        const pm = S.prefixMap;
+        body = html`<p class="muted small">An employee number's prefix sets the certified class by default (the table below: FB5 is a Laborer journeyman, FB8 a Carpenter journeyman); then the foremen, general foremen, apprentices and superintendents are picked by hand, one person at a time. A number no prefix covers is held until one does. Names stay on this tab; nowhere else, and never for viewers.</p>
+          <h3>Prefix defaults</h3>
+          <table><tr><th>Prefix</th><th>Certified class by default</th><th></th></tr>
+          ${S.prefixes.map((p) => html`<tr><form class="prefix" data-p="${p.prefix}"><td class="mono">${p.prefix}</td><td><select name="certified_class">${L.KNOWN_CLASSES.map((c) => html`<option value="${c}" ${c === p.certified_class ? "selected" : ""}>${classLabel(c)}</option>`)}</select></td><td><button>Save</button> <button type="button" class="delprefix" data-p="${p.prefix}">Remove</button></td></form></tr>`)}</table>
+          <form id="addprefix" class="inline"><label>Prefix<input name="prefix" required placeholder="FB5" maxlength="6" style="width:80px"></label><label>Class by default<select name="certified_class">${L.KNOWN_CLASSES.map((c) => html`<option value="${c}">${classLabel(c)}</option>`)}</select></label><button class="primary">Add prefix</button></form>
+          <h3>People</h3>
           <table><tr><th>Employee #</th><th>Name</th><th>Certified class</th><th></th></tr>
-          ${S.employees.slice().sort((a, b) => (noClass.has(b.employee_number) ? 1 : 0) - (noClass.has(a.employee_number) ? 1 : 0) || (a.employee_number < b.employee_number ? -1 : 1)).map((e) => html`<tr class="${noClass.has(e.employee_number) ? "held" : ""}"><form class="emp" data-n="${e.employee_number}"><td class="mono">${e.employee_number}</td><td>${e.name || ""}</td><td><select name="certified_class">${classOptions(e.certified_class)}</select>${!e.certified_class ? html` <span class="muted small">${L.classFromPrefix(e.employee_number) ? classLabel(L.classFromPrefix(e.employee_number)) : "no prefix default: set it"}</span>` : ""}</td><td><button>Save</button></td></form></tr>`)}</table>`;
+          ${S.employees.slice().sort((a, b) => (noClass.has(b.employee_number) ? 1 : 0) - (noClass.has(a.employee_number) ? 1 : 0) || (a.employee_number < b.employee_number ? -1 : 1)).map((e) => html`<tr class="${noClass.has(e.employee_number) ? "held" : ""}"><form class="emp" data-n="${e.employee_number}"><td class="mono">${e.employee_number}</td><td>${e.name || ""}</td><td><select name="certified_class">${classOptions(e.certified_class)}</select>${!e.certified_class ? html` <span class="muted small">${L.classFromPrefix(e.employee_number, pm) ? classLabel(L.classFromPrefix(e.employee_number, pm)) : "no prefix default: set it"}</span>` : ""}</td><td><button>Save</button></td></form></tr>`)}</table>`;
       }
     } else if (tab === "paytypes") {
       body = html`<p class="muted small">Paid time off has hours but no billable rate; it is held for the audit, never priced. "Excluded" drops a pay type from the month entirely. Pay types not listed are rated.</p>
@@ -581,6 +588,9 @@
     if (st.fill && f("addrate")) { const form = f("addrate"), d = st.fill; st.fill = null; if (form.rate_table_code.value === d.table) { form.certified_class.value = d.class; form.pay_id.value = d.pay; form.rate.focus(); } }
     on("button.retire", "click", async (ev) => { if (!confirm("Retire this rate? Hours it priced will be held until a new one is in force.")) return; try { await st.db.retireRate(ev.currentTarget.dataset.id); reload("Rate retired."); } catch (e) { toast(e.message); } });
     on("form.emp", "submit", async (ev) => { ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target)); try { await st.db.update("employees", { employee_number: ev.target.dataset.n }, { certified_class: d.certified_class || null }); reload("Saved."); } catch (e) { toast(e.message); } });
+    on("form.prefix", "submit", async (ev) => { ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target)); try { await st.db.update("prefix_classes", { prefix: ev.target.dataset.p }, { certified_class: d.certified_class }); reload("Saved."); } catch (e) { toast(e.message); } });
+    const ap = $("#addprefix"); if (ap) ap.addEventListener("submit", async (ev) => { ev.preventDefault(); const d = Object.fromEntries(new FormData(ap)); try { await st.db.insert("prefix_classes", { prefix: d.prefix.trim().toUpperCase(), certified_class: d.certified_class }); reload("Prefix added."); } catch (e) { toast(e.message); } });
+    $$("button.delprefix").forEach((b) => b.addEventListener("click", async () => { if (!confirm(`Remove the ${b.dataset.p} default? People on it with no class set are held until a class is set.`)) return; try { await st.db.remove("prefix_classes", { prefix: b.dataset.p }); reload("Removed."); } catch (e) { toast(e.message); } }));
     if (f("addpolicy")) f("addpolicy").addEventListener("submit", async (ev) => { ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target)); try { await st.db.upsert("pay_type_policy", [{ pay_type_name: d.pay_type_name.trim(), policy: d.policy }], "workspace_id,pay_type_name"); reload("Policy set."); } catch (e) { toast(e.message); } });
     if (f("invite")) f("invite").addEventListener("submit", async (ev) => { ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target)); try { await st.db.insert("members", { email: d.email.trim(), role: d.role }); reload(`${d.email} invited; they sign in with that email.`); } catch (e) { toast(e.message); } });
   }

@@ -20,8 +20,11 @@
 }(typeof self !== "undefined" ? self : this, function (C) {
   "use strict";
 
-  // Certified class from the employee number's prefix, when Settings has
-  // nothing. FB1 (safety) has no default: it is set, never guessed.
+  // Certified class from the employee number's prefix, when the employee has
+  // none set. The prefixes are a setting (Settings > Employees > Prefix
+  // defaults: "FB5 is a Laborer journeyman, then hand-pick the foremen");
+  // these are the ones every workspace starts with. FB1 (safety) has no
+  // default: it is set, never guessed.
   const PREFIX_CLASS = { FB2: "#LAB-J", FB5: "#LAB-J", TTR: "#LAB-J", FB7: "#CARP-J", FB8: "#CARP-J" };
   const TRADE_OF = { CARP: "Carpenter", LAB: "Laborer", SUP: "Superintendent", SAF: "Safety" };
   const LEVEL_OF = { J: "Journeyman", F: "Foreman", GF: "General Foreman", A: "Apprentice", NU: "Non-union" };
@@ -30,7 +33,24 @@
   const PTO_PAY_TYPES = ["Vacation", "Holiday", "Sick Time", "Flex Paid Time Off", "Birthday Time Off", "Floating Hol"];
   const POLICIES = ["rated", "held_pto", "excluded"];
 
-  const classFromPrefix = (employeeNumber) => PREFIX_CLASS[String(employeeNumber || "").slice(0, 3).toUpperCase()] || null;
+  /** {FB5: "#LAB-J", ...} from the rows Settings keeps ([{prefix, certified_class}]); an object passes through; nothing given = the page's own list */
+  function prefixMap(rows) {
+    if (rows == null) return PREFIX_CLASS;
+    if (!Array.isArray(rows)) return rows;
+    const m = {};
+    for (const r of rows) if (r && r.prefix && r.certified_class) m[String(r.prefix).toUpperCase()] = r.certified_class;
+    return m;
+  }
+  /** The class the number's prefix implies: the longest listed prefix it starts with, or null. */
+  function classFromPrefix(employeeNumber, prefixes) {
+    const n = String(employeeNumber || "").toUpperCase();
+    let bestPrefix = "", bestClass = null;
+    for (const [p, c] of Object.entries(prefixMap(prefixes))) {
+      const k = String(p).toUpperCase();
+      if (k && n.startsWith(k) && k.length > bestPrefix.length) { bestPrefix = k; bestClass = c; }
+    }
+    return bestClass;
+  }
   /** "#CARP-GF" -> {trade: "Carpenter", level: "General Foreman", label: "Carpenter General Foreman"} */
   function classParts(code) {
     const m = String(code || "").toUpperCase().match(/^#?([A-Z]+)(?:-([A-Z]+))?$/);
@@ -69,9 +89,10 @@
   function price(rows, ctx) {
     const jobs = new Map((ctx.jobs || []).map((j) => [j.job_number, j]));
     const employees = ctx.employees || {};
+    const prefixes = prefixMap(ctx.prefixes);
     return rows.map((r) => {
       const e = employees[r.employee_number] || {};
-      const cclass = e.certified_class || classFromPrefix(r.employee_number);
+      const cclass = e.certified_class || classFromPrefix(r.employee_number, prefixes);
       const out = Object.assign({}, r, { certified_class: cclass, class_label: cclass ? classLabel(cclass) : null, week_ending: weekEnding(r.work_date),
         rate_table_code: null, status: "priced", reason: "", rate_cents: null, cost_cents: null });
       const pol = policyOf(r.pay_type_name, ctx.policy);
@@ -141,5 +162,5 @@
     return hits.length === 1 ? hits[0] : null;
   }
 
-  return { PREFIX_CLASS, KNOWN_CLASSES, PTO_PAY_TYPES, POLICIES, classFromPrefix, classParts, classLabel, weekEnding, rateKey, findRate, policyOf, price, summarize, stamp, tableForJob };
+  return { PREFIX_CLASS, KNOWN_CLASSES, PTO_PAY_TYPES, POLICIES, prefixMap, classFromPrefix, classParts, classLabel, weekEnding, rateKey, findRate, policyOf, price, summarize, stamp, tableForJob };
 }));

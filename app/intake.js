@@ -79,7 +79,7 @@
   // ---- one file -> one card ------------------------------------------------------
   function hh2Card(card, doc, ctx) {
     const lab = ctx.labor || {};
-    const priced = L.price(doc.rows, { rates: lab.rates || [], employees: lab.employees || {}, policy: lab.policy || {}, jobs: lab.jobs || [] });
+    const priced = L.price(doc.rows, { rates: lab.rates || [], employees: lab.employees || {}, policy: lab.policy || {}, jobs: lab.jobs || [], prefixes: lab.prefixes });
     const summary = L.summarize(priced);
     Object.assign(card, {
       status: "ready", doc, priced, summary, stamp: L.stamp(summary),

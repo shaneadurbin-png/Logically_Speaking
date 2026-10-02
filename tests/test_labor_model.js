@@ -34,6 +34,18 @@ check("certified class from the employee-number prefix; safety has no default", 
   eq(L.classFromPrefix("FB5012"), "#LAB-J"); eq(L.classFromPrefix("fb8001"), "#CARP-J"); eq(L.classFromPrefix("FB1001"), null);
   eq(L.classFromPrefix("TTR-10073"), "#LAB-J"); eq(L.classFromPrefix("FE9001"), null); eq(L.classFromPrefix(""), null);
 });
+check("the prefix defaults are a setting: rows from Settings read, the longest listed prefix wins, none listed means none guessed", () => {
+  eq(L.classFromPrefix("FE60067", { FE: "#SUP" }), "#SUP"); eq(L.classFromPrefix("FB5001", { FB: "#LAB-J", FB5: "#LAB-F" }), "#LAB-F"); eq(L.classFromPrefix("FB2001", { FB: "#LAB-J", FB5: "#LAB-F" }), "#LAB-J");
+  eq(L.classFromPrefix("FB5001", [{ prefix: "fb5", certified_class: "#LAB-J" }]), "#LAB-J"); eq(L.classFromPrefix("FB5001", {}), null); eq(L.classFromPrefix("FB5001", []), null);
+  eq(L.prefixMap([{ prefix: "FB8", certified_class: "#CARP-J" }, { prefix: "", certified_class: "#SUP" }]), { FB8: "#CARP-J" }); eq(L.prefixMap(undefined), L.PREFIX_CLASS);
+  const none = L.price(doc.rows, Object.assign({}, ctx, { prefixes: [] }));
+  const before = Object.fromEntries(priced.map((r) => [r.row_index, r.status]));
+  const fb5 = none.filter((r) => r.employee_number.startsWith("FB5") && r.employee_number !== "FB5003" && /^(priced|held:no rate)$/.test(before[r.row_index]));
+  ok(fb5.length > 0 && fb5.every((r) => r.status === "held:no class"), "with no prefixes listed, FB5 rows without a set class are held (PTO rows stay PTO)");
+  eq(none.find((r) => r.employee_number === "FB5003" && r.pay_type === "REG").status, "priced", "a class set on the person still prices");
+  const fe = L.price(doc.rows, Object.assign({}, ctx, { prefixes: [{ prefix: "FB1", certified_class: "#LAB-J" }].concat(Object.entries(L.PREFIX_CLASS).map(([prefix, certified_class]) => ({ prefix, certified_class }))) }));
+  ok(fe.filter((r) => r.employee_number.startsWith("FB1")).every((r) => r.status !== "held:no class"), "listing FB1 takes its rows out of no class");
+});
 check("class codes read as words", () => {
   eq(L.classLabel("#CARP-GF"), "Carpenter General Foreman"); eq(L.classLabel("#LAB-J"), "Laborer Journeyman"); eq(L.classLabel("#SUP"), "Superintendent"); eq(L.classLabel("#LAB-NU"), "Laborer Non-union");
 });

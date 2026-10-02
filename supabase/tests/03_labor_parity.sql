@@ -2,7 +2,7 @@
 -- The fixture HH2 export, recorded through the RPCs, priced by v_labor_priced,
 -- must match expected.json row for row - the same spec app/labor_model.js meets.
 begin;
-select plan(18);
+select plan(21);
 insert into auth.users (id, email) values ('10000000-0000-4000-8000-000000000002', 'editor@example.com'), ('10000000-0000-4000-8000-000000000003', 'viewer@example.com');
 insert into public.members (workspace_id, email, user_id, role) values
   ('00000000-0000-4000-8000-000000000001', 'editor@example.com', '10000000-0000-4000-8000-000000000002', 'editor'),
@@ -36,6 +36,12 @@ select is((select week_ending from public.labor_lines where row_index = 2), '202
 -- the held rows disappear from the audit once Settings answers
 insert into public.employees (workspace_id, employee_number, certified_class) values ('00000000-0000-4000-8000-000000000001', 'FE9001', '#LAB-J');
 select is((select status from public.v_labor_priced where employee_number = 'FE9001'), 'held:unknown job', 'a class set in Settings still leaves an unknown job held');
+-- the prefix defaults are a setting: take FB7's away and the carpenters it covered are held, put it back and they price again
+select is((select count(*) from public.prefix_classes where workspace_id = '00000000-0000-4000-8000-000000000001'), 5::bigint, 'the workspace was seeded with the five prefix defaults');
+delete from public.prefix_classes where workspace_id = '00000000-0000-4000-8000-000000000001' and prefix = 'FB7';
+select is((select count(*) from public.v_labor_priced where employee_number like 'FB7%' and status = 'held:no class'), 4::bigint, 'without the FB7 default its rows are held: no class');
+insert into public.prefix_classes (workspace_id, prefix, certified_class) values ('00000000-0000-4000-8000-000000000001', 'FB7', '#CARP-J');
+select is((select count(*) from public.v_labor_priced where employee_number like 'FB7%' and status = 'priced'), 4::bigint, 'with it back they price again');
 reset role;
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-4000-8000-000000000003","email":"viewer@example.com","role":"authenticated"}', true);
 set local role authenticated;

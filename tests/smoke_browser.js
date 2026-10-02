@@ -160,6 +160,12 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   check((await text("main")).includes("Rental tax %"), "Jobs tab carries tax, markup and rate table per job");
   await nav("#/settings?tab=employees");
   check((await text("main")).includes("Certified class"), "Employees tab sets the certified class");
+  check(/Prefix defaults[\s\S]*FB5/.test(await text("main")), "the prefix defaults are a table on the Employees tab");
+  check((await page.locator("tr", { hasText: "FE9001" }).locator("span.muted").first().textContent()).includes("no prefix default"), "FE9001 has no prefix default yet");
+  await page.fill("#addprefix input[name=prefix]", "fe");
+  await page.locator("#addprefix select[name=certified_class]").selectOption("#SUP");
+  { const r0 = await renders(); await page.click("#addprefix button.primary"); await page.waitForFunction((b) => window.UI.state.renders > b, r0); }
+  check((await page.locator("tr", { hasText: "FE9001" }).locator("span.muted").first().textContent()).includes("Superintendent (#SUP)"), "adding the FE prefix gives FE9001 its class at once");
 
   // add a rate for a held key through the form, and see the held count drop
   await nav("#/job/50-60-225121?m=2026-09");
