@@ -31,9 +31,25 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   await page.goto(`${BASE}/CostTracker.html#/?m=2026-09`);
   await page.waitForSelector("header.top");
   check((await text("header.top")).includes("Demo"), "header says demo mode");
-  check((await page.$$("main .cards .card")).length === 4, "Portfolio shows the 4 demo jobs");
-  check((await text("main")).includes("Nothing recorded"), "Portfolio is empty before any drop");
+  const emptyOrder = await page.$$eval("a.pf-row[data-campus]", (els) => els.map((e) => e.getAttribute("data-campus")));
+  check(emptyOrder.join(",") === "PHL,SBN,IAD,PDX,DFW,LCK,CMH,CDR,AUS,BWI", "Portfolio lists the ten campuses, in order");
+  check((await text("main")).includes("Mission Critical"), "portfolio heading");
+  check(!(await text("main")).includes("Weekly Labor Burn"), "portfolio does not include weekly detail");
   await shot("01-portfolio-empty");
+
+  await nav("#/review?m=2026-09");
+  check((await page.evaluate(() => location.hash)).startsWith("#/"), "review with no project opens the portfolio");
+  check((await text("main")).includes("Mission Critical"), "review lands on the portfolio");
+  check(!(await text("main")).includes("Select all"), "review does not render the checkbox wall");
+  await nav("#/p/50-60-225121?m=2026-09");
+  check((await text(".gr-dash")).includes("GR Weekly Cost Review"), "weekly review opens on one project");
+  check((await text("#kpiLaborCost")) === "$0.00", "empty labor burn is zero");
+  check((await text("main")).includes("CDR") && (await text("main")).includes("DC4"), "the project header is Campus > Project");
+  await nav("#/p/50-60-225121?m=2026-09&tab=rental");
+  check((await text(".gr-dash")).includes("does not apply"), "rental tab says the week slicer does not apply");
+  await nav("#/p/50-60-225121?m=2026-09&tab=po");
+  check((await text(".gr-dash")).includes("Weekly Committed POs"), "committed PO tab opens");
+  await nav("#/?m=2026-09");
 
   // ---- Update: drop every fixture -----------------------------------------------
   await nav("#/update");
@@ -75,7 +91,7 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   for (const c of after) console.log(`    [${c.status}] ${c.title} :: ${c.reason.slice(0, 120)}`);
   check(after.filter((c) => c.status === "recorded").length === 17, "17 files recorded");
   check(after.some((c) => c.title.startsWith("Sage rate tables") && /rates added/.test(c.reason) && /Newly assigned: 110 #224050/.test(c.reason)), "the Sage card says how many rates were added and that the register's new job got its table");
-  check((await text("header.top")).includes("HH2 through"), "the header chips refresh after Record");
+  check(!(await text("header.top")).includes("HH2 through") && !(await text("header.top")).includes(".xlsx"), "the header does not list uploaded reports after Record");
   await shot("03-update-recorded");
 
   // the same file again: already on file
@@ -89,12 +105,25 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   const tiles = await page.$$eval("main .tiles .tile", (els) => els.map((e) => `${e.querySelector(".label").textContent} = ${e.querySelector(".value").textContent}`));
   console.log("    " + tiles.join(" | "));
   check(tiles.length === 4 && !tiles.every((t) => t.endsWith("$0")), "Portfolio tiles carry money");
-  check((await text("header.top")).includes("HH2 through Sep 30, 2026") || (await text("header.top")).includes("HH2 through"), "header chip says what HH2 covers");
-  check((await text("header.top")).includes("POs as of"), "header chip says the PO export's as-of");
-  const campuses = await page.$$eval("main h2", (els) => els.map((e) => e.textContent.trim()));
+  check(!(await text("header.top")).includes("HH2 through") && !(await text("header.top")).includes("POs as of") && (await text("header.top")).includes("Portfolio"), "header keeps navigation and omits the report chips");
+  const campuses = await page.$$eval("main .pf-row .pf-row-name", (els) => els.map((e) => e.textContent.trim()));
   console.log("    campuses: " + campuses.join(" / "));
-  check(campuses.length >= 1, "jobs are grouped by campus");
+  check(campuses.join(",") === "PHL,SBN,IAD,PDX,DFW,LCK,CMH,CDR,AUS,BWI", "the ten campuses stay in order");
+  check(!/110\s+110/.test(await text("main")), "a register job is not named twice on the portfolio");
   await shot("04-portfolio");
+
+  await nav("#/p/50-60-225121?m=2026-09");
+  const laborKpi = await text("#kpiLaborCost");
+  console.log("    review labor " + laborKpi);
+  check(laborKpi && laborKpi !== "$0.00", "weekly review prices the recorded week for this job");
+  check(!(await text("main")).includes("50-60-225008"), "the project page does not render another job");
+  await shot("04b-review-labor");
+  await nav("#/p/50-60-225121?m=2026-09&tab=rental");
+  check((await text(".gr-dash")).includes("Weekly Rental Burn"), "rental burn opens after record");
+  await shot("04c-review-rental");
+  await nav("#/p/50-60-225121?m=2026-09&tab=po");
+  check((await text(".gr-dash")).includes("Weekly Committed POs"), "committed POs open after record");
+  await shot("04d-review-po");
 
   // ---- Job DC4 -------------------------------------------------------------------------
   await nav("#/job/50-60-225121?m=2026-09");
@@ -126,7 +155,7 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   const ec = page.locator("form.endcharge").first(); await ec.locator("input[name=end_month]").fill("2026-08"); const re = await renders(); await ec.locator("button").click(); await page.waitForFunction((b) => window.UI.state.renders > b, re);
   await nav("#/job/50-60-225121?m=2026-09");
   check((await rentOf()) === rentBefore, "ending it in August takes it out of September");
-  check((await text("header.top")).includes("JCTD through"), "the header chip says what the JCTD covers");
+  check(!(await text("header.top")).includes("JCTD through") && !(await text("header.top")).includes("No JCTD"), "the header does not list the JCTD report");
 
   // ---- Site services on DC5: restrooms, the plexes, the dumpsters, a pull logged ---------------------
   await nav("#/job/50-60-225120?m=2026-09");
@@ -142,8 +171,10 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   const sm2 = (await text("main")).replace(/\s+/g, " ");
   check(sm2.includes("WM-77") && sm2.includes("from the log"), "a logged pull shows in the log and counts for its hauler");
   await shot("05c-job-dc5-site-services");
+  await nav("#/c/CDR?m=2026-09");
+  check((await text("main")).includes("DC5") && (await text("main")).includes("50-60-225120"), "the CDR page lists DC5");
+  check(!(await text("main")).includes("Weekly Labor Burn"), "the campus page is project links, not the weekly review");
   await nav("#/?m=2026-09");
-  check((await text("main")).includes("17 restrooms · 9 buildings · 7 pulls"), "the DC5 card says 17 restrooms, 9 buildings, 7 pulls");
   await nav("#/settings?tab=waste");
   check((await text("main")).includes("sourgum") && (await text("main")).includes("waste management"), "Settings / Haulers lists both haulers");
 
@@ -159,7 +190,8 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   check(rt.includes("missing") || rt.includes("in force"), "Rate tables tab shows rates in force and what is missing");
   await shot("06-settings-rates");
   await nav("#/settings?tab=jobs");
-  check((await text("main")).includes("Rental tax %"), "Jobs tab carries tax, markup and rate table per job");
+  const jobsText = await text("main");
+  check(jobsText.includes("PHL") && jobsText.includes("CDR") && !jobsText.includes("JobShort name") && !jobsText.includes("CDR E1"), "Jobs tab groups projects by campus code");
   await nav("#/settings?tab=employees");
   check((await text("main")).includes("Certified class"), "Employees tab sets the certified class");
   check(/Prefix defaults[\s\S]*FB5/.test(await text("main")), "the prefix defaults are a table on the Employees tab");
@@ -192,6 +224,9 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   await nav("#/report/all?m=2026-09");
   const rep = await text("main");
   check(rep.includes("All jobs") && rep.includes("Labor"), "Report for all jobs renders");
+  check(rep.includes("CDR1 East DC4"), "a distinct project name still prints beside the short name");
+  check(!/110\s+110/.test(rep) && !/Project Gravity\s+Project Gravity/.test(rep), "the report does not print a job name twice");
+  check(rep.includes("Held, not in the cost"), "held hours are listed on the report instead of only a $0 labor tile");
   await page.emulateMedia({ media: "print" });
   await page.pdf({ path: path.join(OUT, "report-all-2026-09.pdf"), format: "Letter", printBackground: true });
   await page.emulateMedia({ media: "screen" });

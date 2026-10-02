@@ -28,6 +28,11 @@
       dumpster_pulls: [],
     };
     for (const t of S.rate_tables) for (const [certified_class, pay_id, rate_cents] of RATES) S.billable_rates.push({ id: uuid(), workspace_id: WS, rate_table_code: t.code, certified_class, pay_id, rate_cents, effective_from: "2026-07-01", effective_to: null, effective: "[2026-07-01,)", retired_at: null, note: "demo" });
+    // The Projects workbook's rows. A demo job already here keeps its name and rate table.
+    P.mergeInto(S.jobs, P.REGISTER, (j) => {
+      const tax = P.taxFor(j.campus);
+      return { id: uuid(), workspace_id: WS, job_number: j.job_number, short_name: j.short_name, name: j.name, campus: j.campus, region: j.region, rate_table_code: null, tax_bp: tax == null ? 700 : tax, markup_bp: 1000, markup_base: "rent_plus_tax", active: true };
+    });
 
     const self = { mode: "demo", ws: WS, role: "owner", user: { email: "you@demo", id: "demo" }, workspaces: [{ id: WS, role: "owner", name: "Demo workspace" }] };
     self.session = async () => self.user; self.sendCode = async () => ({}); self.verify = async () => self.user; self.signOut = async () => {};

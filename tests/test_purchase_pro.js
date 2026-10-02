@@ -58,7 +58,7 @@ check("a row repeated in the export is kept twice and both copies wait; a foreig
 });
 check("the Projects register: jobs, repeats dropped, campuses counted", () => {
   const d = Projects.read(fs.readFileSync(path.join(F, "projects/Projects.xlsx")), "Projects.xlsx");
-  eq(d.totals.jobs, 5); eq(d.totals.repeated, 1); eq(d.totals.campuses, { BWI: 1, "CDR E1": 1, SBN: 1, AUS: 1, "(none)": 1 });
+  eq(d.totals.jobs, 5); eq(d.totals.repeated, 1); eq(d.totals.campuses, { BWI: 1, CDR: 1, SBN: 1, AUS: 1, "(none)": 1 });
   const bwi = d.jobs.find((j) => j.job_number === "50-60-224050"); eq(bwi.name, "110"); eq(bwi.short_name, "110"); eq(bwi.campus, "BWI"); eq(bwi.region, "Baltimore, MD");
   eq(d.jobs.find((j) => j.job_number === "50-60-226094").campus, null);
 });
