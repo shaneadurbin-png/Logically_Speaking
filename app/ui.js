@@ -14,7 +14,7 @@
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig, PM = root.PortfolioMap;
-  const RELEASE = "0.1.6";
+  const RELEASE = "0.1.7";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -128,7 +128,7 @@
     const on = f.onrent_as_of || {};
     const chip = (cls, text, title) => html`<span class="chip ${cls}" title="${title || ""}"><span class="dot"></span>${text}</span>`;
     const age = (iso) => { if (!iso) return "none"; const d = Math.round((Date.now() - new Date(iso + "T00:00:00").getTime()) / 86400000); return d <= 10 ? "fresh" : "stale"; };
-    const nav = (p, label) => html`<a href="#/${p}" class="${st.route.page === p || (p === "" && !st.route.page) ? "on" : ""}">${label}</a>`;
+    const nav = (p, label) => html`<a href="${p === "" ? portfolioHome() : `#/${p}`}" class="${st.route.page === p || (p === "" && !st.route.page) ? "on" : ""}">${label}</a>`;
     return html`<header class="top"><span class="brand">GR Cost</span>
       <nav>${nav("", "Portfolio")}${nav("review", "Review")}${st.db.canEdit() ? nav("update", "Update") : ""}${nav("settings", "Settings")}</nav>
       <span class="spacer"></span>
@@ -143,7 +143,44 @@
 
   // ---- Portfolio ----------------------------------------------------------------------------------
   const monthNav = (m, base) => html`<div class="row noprint"><a href="${base}?m=${prevMonth(m)}">&larr; ${C.fmtMonth(prevMonth(m))}</a><span class="big">${C.fmtMonth(m)}</span><a href="${base}?m=${nextMonth(m)}">${C.fmtMonth(nextMonth(m))} &rarr;</a></div>`;
-  const portfolioHref = (month, campus) => `#/?m=${month}${campus ? `&c=${encodeURIComponent(campus)}` : ""}`;
+  const portfolioHref = (month, campus, job) => `#/?m=${month}${campus ? `&c=${encodeURIComponent(campus)}` : ""}${job ? `&j=${encodeURIComponent(job)}` : ""}`;
+  const reviewState = () => st.review || (st.review = { campuses: null, projects: null, sort: {} });
+  /** The review calls a blank campus Unassigned. The portfolio list calls it Other. */
+  const reviewCampus = (name) => (!name || name === "Other" ? "Unassigned" : name);
+  const portfolioCampus = (name) => (name === "Unassigned" ? "Other" : name);
+  function portfolioHome() {
+    const rev = st.review || {};
+    const campus = rev.campuses && rev.campuses.length === 1 ? portfolioCampus(rev.campuses[0]) : "";
+    const job = rev.projects && rev.projects.length === 1 ? rev.projects[0] : "";
+    return portfolioHref(monthQ(st.route.q), campus, job);
+  }
+  function reviewHref() {
+    const w = st.review && st.review.week;
+    return `#/review?tab=labor${w ? `&w=${encodeURIComponent(w)}` : ""}`;
+  }
+  /** Hash c/j on the portfolio is the isolation. With neither, keep st.review (the way back from the review). */
+  function syncPortfolioSelection() {
+    const rev = reviewState();
+    const q = st.route.q;
+    if (!("c" in q) && !("j" in q)) return rev;
+    const names = st.settings.jobs.filter((j) => j.active !== false).map((j) => j.campus || "Other");
+    const wanted = (q.c || "").trim();
+    const hit = names.find((n) => n.toLowerCase() === wanted.toLowerCase());
+    const jobNo = (q.j || "").trim();
+    const job = jobNo && st.settings.jobByNumber[jobNo];
+    const jobOk = job && job.active !== false;
+    if (jobOk) {
+      rev.projects = [job.job_number];
+      rev.campuses = [reviewCampus(job.campus || "Other")];
+    } else if (hit) {
+      rev.campuses = [reviewCampus(hit)];
+      rev.projects = null;
+    } else {
+      rev.campuses = null;
+      rev.projects = null;
+    }
+    return rev;
+  }
   async function portfolioView(m) {
     const rows = await st.db.view("v_job_month", { month: m + "-01" });
     const by = Object.fromEntries(rows.map((r) => [r.job_number, r]));
@@ -151,41 +188,41 @@
     const siteOf = (n) => SS.shortLabel(SS.fromViews(siteRows.filter((x) => x.job_number === n), plexRows.filter((x) => x.job_number === n)), pullsOf(dumpRows.filter((x) => x.job_number === n)));
     const groups = {};
     for (const j of st.settings.jobs.filter((j) => j.active !== false)) (groups[j.campus || "Other"] = groups[j.campus || "Other"] || []).push(j);
-    const tot = rows.reduce((t, r) => ({ labor: t.labor + r.labor_cents, rent: t.rent + r.rental_cents + r.rental_lo_cents + (r.offfeed_cents || 0), purch: t.purch + r.purchase_cents, pending: t.pending + r.pending_cents, all: t.all + r.total_cents }), { labor: 0, rent: 0, purch: 0, pending: 0, all: 0 });
-    const withCost = rows.filter((r) => r.total_cents).length;
+    const rev = syncPortfolioSelection();
+    const campusOn = rev.campuses ? rev.campuses.map(portfolioCampus) : null;
+    const projectOn = rev.projects || null;
+    const isolated = !!(campusOn || projectOn);
+    const scopeIds = isolated ? st.settings.jobs.filter((j) => j.active !== false && (!campusOn || campusOn.includes(j.campus || "Other")) && (!projectOn || projectOn.includes(j.job_number))).map((j) => j.job_number) : null;
+    const tot = PM.monthScope(rows, scopeIds);
+    const monthAll = isolated ? PM.monthScope(rows, null) : tot;
     // the month shown may simply be ahead of the time sheets: say so instead of showing a bare $0
-    const f = fresh[0] || {}, laborHours = rows.reduce((t, r) => t + (+r.labor_hours || 0), 0), heldHours = rows.reduce((t, r) => t + (+r.labor_held_hours || 0), 0);
-    const laborNote = !laborHours && f.hh2_through && C.monthOf(f.hh2_through) !== m ? `no hours in ${C.fmtMonth(m)} yet; HH2 through ${C.fmtDay(f.hh2_through)} (see ${C.fmtMonth(C.monthOf(f.hh2_through))})`
-      : laborHours ? `${hours(laborHours)} hours${heldHours ? `, ${hours(heldHours)} held` : ""}` : "";
-    const pendingLines = rows.reduce((t, r) => t + (r.pending_lines || 0), 0);
+    const f = fresh[0] || {};
+    const laborNote = !tot.hours && !monthAll.hours && f.hh2_through && C.monthOf(f.hh2_through) !== m ? `no hours in ${C.fmtMonth(m)} yet; HH2 through ${C.fmtDay(f.hh2_through)} (see ${C.fmtMonth(C.monthOf(f.hh2_through))})`
+      : tot.hours ? `${hours(tot.hours)} hours${tot.held ? `, ${hours(tot.held)} held` : ""}` : "";
     const campuses = Object.entries(groups).map(([name, jobs]) => {
-      let total = 0, hours = 0, held = 0;
-      for (const j of jobs) {
-        const r = by[j.job_number];
-        if (!r) continue;
-        total += r.total_cents || 0;
-        hours += +r.labor_hours || 0;
-        held += +r.labor_held_hours || 0;
-      }
+      const t = PM.monthScope(rows, jobs.map((j) => j.job_number));
       const place = PM.locate(name);
-      return { name, jobs, total, hours, held, place,
+      return { name, jobs, total: t.all, hours: t.hours, held: t.held, place,
         region: (jobs.find((j) => j.region) || {}).region || (place && place.place) || "",
-        hasCost: total !== 0, active: total !== 0 || hours !== 0 || held !== 0 };
+        hasCost: t.all !== 0, active: t.all !== 0 || t.hours !== 0 || t.held !== 0 };
     }).sort((a, b) => (b.total - a.total) || a.name.localeCompare(b.name));
-    const wanted = (st.route.q.c || "").trim();
-    const hit = campuses.find((c) => c.name.toLowerCase() === wanted.toLowerCase());
-    const selected = hit ? hit.name : "";
-    const shown = selected ? campuses.filter((c) => c.name === selected) : campuses;
-    const points = campuses.filter((c) => c.place).map((c) => ({ id: c.name, name: c.name, lon: c.place.lon, lat: c.place.lat, hasCost: c.hasCost, selected: c.name === selected }));
+    const singleCampus = campusOn && campusOn.length === 1 ? campusOn[0] : "";
+    const singleProject = projectOn && projectOn.length === 1 ? projectOn[0] : "";
+    let shown = campuses;
+    if (campusOn) shown = shown.filter((c) => campusOn.includes(c.name));
+    if (projectOn) shown = shown.map((c) => Object.assign({}, c, { jobs: c.jobs.filter((j) => projectOn.includes(j.job_number)) })).filter((c) => c.jobs.length);
+    const points = campuses.filter((c) => c.place).map((c) => ({ id: c.name, name: c.name, lon: c.place.lon, lat: c.place.lat, hasCost: c.hasCost, selected: !!singleCampus && c.name === singleCampus }));
+    const hit = singleCampus ? campuses.find((c) => c.name === singleCampus) : null;
+    const scopeName = singleProject ? ((st.settings.jobByNumber[singleProject] || {}).short_name || singleProject) : singleCampus ? singleCampus : campusOn ? n1(campusOn.length, "campus", "campuses") : n1(campuses.length, "campus", "campuses");
     return html`<div class="pf">
       <div class="pf-head">
         <div class="pf-intro">
           <h1 class="pf-title">What each campus has cost.</h1>
-          <p class="pf-sub">${n1(campuses.length, "campus", "campuses")} · ${money(tot.all, true)} this month. Figures come from HH2, the on-rent reports, and Purchase Pro.</p>
+          <p class="pf-sub">${scopeName} · ${money(tot.all, true)} this month. Figures come from HH2, the on-rent reports, and Purchase Pro.</p>
         </div>
         <div class="pf-tools noprint">
-          <div class="row pf-months"><a href="${portfolioHref(prevMonth(m), selected)}">&larr; ${C.fmtMonth(prevMonth(m))}</a><span class="big">${C.fmtMonth(m)}</span><a href="${portfolioHref(nextMonth(m), selected)}">${C.fmtMonth(nextMonth(m))} &rarr;</a></div>
-          <span class="row"><a href="#/review"><button>Weekly review</button></a><a href="#/report/all?m=${m}"><button>Report (PDF)</button></a><button id="buckets" title="one row per job, month and bucket, the shape GRforecast imports">Export for GRforecast</button></span>
+          <div class="row pf-months"><a href="${portfolioHref(prevMonth(m), singleCampus, singleProject)}">&larr; ${C.fmtMonth(prevMonth(m))}</a><span class="big">${C.fmtMonth(m)}</span><a href="${portfolioHref(nextMonth(m), singleCampus, singleProject)}">${C.fmtMonth(nextMonth(m))} &rarr;</a></div>
+          <span class="row"><a href="${reviewHref()}"><button type="button">Weekly review</button></a><a href="#/report/all?m=${m}"><button>Report (PDF)</button></a><button id="buckets" title="one row per job, month and bucket, the shape GRforecast imports">Export for GRforecast</button></span>
         </div>
       </div>
       <div class="pf-band">
@@ -195,18 +232,21 @@
         <aside class="pf-side">
           <div class="pf-side-in">
             <div class="pf-side-head"><div class="pf-side-title">Campuses</div><div class="pf-side-col">this month</div></div>
-            <button type="button" id="pf-all" class="pf-all ${selected ? "" : "on"}">All</button>
-            <div class="pf-rows">${campuses.map((c) => html`<button type="button" class="pf-row ${c.name === selected ? "on" : ""}" data-campus="${c.name}">
-              <span class="pf-bullet ${c.hasCost ? "on" : ""}"></span>
-              <span class="pf-row-main"><span class="pf-row-name">${c.name}</span>${c.region ? html`<span class="pf-row-region">${c.region}</span>` : ""}${c.active ? html`<span class="pf-live">Active</span>` : ""}</span>
-              <span class="pf-row-fig"><span class="pf-row-money">${money(c.total, true)}</span><span class="pf-row-jobs">${n1(c.jobs.length, "job")}</span></span>
-            </button>`)}</div>
+            <button type="button" id="pf-all" class="pf-all ${isolated ? "" : "on"}">All</button>
+            <div class="pf-rows">${campuses.map((c) => html`<div class="pf-row ${singleCampus === c.name ? "on" : ""}">
+              <button type="button" class="pf-row-hit" data-campus="${c.name}">
+                <span class="pf-bullet ${c.hasCost ? "on" : ""}"></span>
+                <span class="pf-row-main"><span class="pf-row-name">${c.name}</span>${c.region ? html`<span class="pf-row-region">${c.region}</span>` : ""}${c.active ? html`<span class="pf-live">Active</span>` : ""}</span>
+                <span class="pf-row-fig"><span class="pf-row-money">${money(c.total, true)}</span><span class="pf-row-jobs">${n1(c.jobs.length, "job")}</span></span>
+              </button>
+              <button type="button" class="pf-dive" data-dive-campus="${c.name}">Review</button>
+            </div>`)}</div>
           </div>
         </aside>
       </div>
-      <div class="tiles">${tile("labor", "Labor", tot.labor, laborNote)}${tile("equipment", "Rentals to client", tot.rent, "on-rent reports and confirmed recurring charges")}${tile("materials", "Purchases", tot.purch, tot.pending ? `${money(tot.pending, true)} awaiting a decision` : "")}${tile("total", "Total", tot.all, `${n1(withCost, "job")} with cost`)}</div>
-      ${pendingLines && st.db.canEdit() ? html`<p class="noprint"><a href="#/settings?tab=purchases">${n1(pendingLines, "PO awaits", "POs await")} a decision &rarr;</a></p>` : ""}
-      ${shown.map((c) => html`<h2>${c.name}${c.region ? html` <span class="muted small">${c.region}</span>` : ""}</h2><div class="cards">${c.jobs.map((j) => jobCard(j, by[j.job_number], m, siteOf(j.job_number)))}</div>`)}
+      <div class="tiles">${tile("labor", "Labor", tot.labor, laborNote)}${tile("equipment", "Rentals to client", tot.rent, "on-rent reports and confirmed recurring charges")}${tile("materials", "Purchases", tot.purch, tot.pending ? `${money(tot.pending, true)} awaiting a decision` : "")}${tile("total", "Total", tot.all, `${n1(tot.withCost, "job")} with cost`)}</div>
+      ${tot.pendingLines && st.db.canEdit() ? html`<p class="noprint"><a href="#/settings?tab=purchases">${n1(tot.pendingLines, "PO awaits", "POs await")} a decision &rarr;</a></p>` : ""}
+      ${shown.map((c) => html`<h2>${c.name}${c.region ? html` <span class="muted small">${c.region}</span>` : ""}</h2><div class="cards">${c.jobs.map((j) => jobCard(j, by[j.job_number], m, siteOf(j.job_number), singleProject === j.job_number))}</div>`)}
       ${st.settings.jobs.length === 0 ? html`<div class="notice">No jobs yet. Drop the Projects register or an HH2 export on Update, or add them in <a href="#/settings">Settings</a>.</div>` : ""}
     </div>`;
   }
@@ -217,14 +257,18 @@
     const name = j && j.name && String(j.name).trim() !== String(short).trim() ? j.name : "";
     return { short, name };
   }
-  function jobCard(j, r, m, siteLabel) {
+  function jobActions(j, isolated) {
+    return html`<p class="pf-card-actions noprint"><button type="button" class="link" data-isolate="${j.job_number}">${isolated ? "Showing this project" : "This project"}</button><button type="button" class="link" data-dive-job="${j.job_number}">Weekly review</button></p>`;
+  }
+  function jobCard(j, r, m, siteLabel, isolated) {
     const head = jobHead(j);
-    if (!r || !r.total_cents && !r.labor_held_hours && !r.pending_lines) return html`<div class="card"><h3><a href="#/job/${j.job_number}?m=${m}">${head.short}</a> <span class="muted small">${j.job_number}</span></h3><p class="muted">Nothing recorded for ${C.fmtMonth(m)}.</p>${siteLabel ? html`<p class="muted small">${siteLabel}</p>` : ""}</div>`;
-    return html`<div class="card"><h3><a href="#/job/${j.job_number}?m=${m}">${head.short}</a> <span class="muted small">${head.name || j.job_number}</span></h3>
+    const on = isolated ? " on" : "";
+    if (!r || !r.total_cents && !r.labor_held_hours && !r.pending_lines) return html`<div class="card${on}"><h3><a href="#/job/${j.job_number}?m=${m}">${head.short}</a> <span class="muted small">${j.job_number}</span></h3><p class="muted">Nothing recorded for ${C.fmtMonth(m)}.</p>${siteLabel ? html`<p class="muted small">${siteLabel}</p>` : ""}${jobActions(j, isolated)}</div>`;
+    return html`<div class="card${on}"><h3><a href="#/job/${j.job_number}?m=${m}">${head.short}</a> <span class="muted small">${head.name || j.job_number}</span></h3>
       <table><tr><td>Labor</td><td class="num">${money(r.labor_cents)}</td><td class="muted small">${hours(r.labor_hours)} h${r.labor_held_hours ? html`, <span class="warn">${hours(r.labor_held_hours)} held</span>` : ""}</td></tr>
       <tr><td>Rentals</td><td class="num">${money(r.rental_cents + (r.offfeed_cents || 0))}</td><td class="muted small">${r.rental_lines} on rent${r.offfeed_lines ? `, ${r.offfeed_lines} recurring` : ""}${r.rental_lo_cents ? `, Liberty-owned ${money(r.rental_lo_cents)}` : ""}</td></tr>
       <tr><td>Purchases</td><td class="num">${money(r.purchase_cents)}</td><td class="muted small">${r.pending_lines ? html`<span class="warn">${n1(r.pending_lines, "PO")} awaiting a decision</span>` : ""}</td></tr>
-      <tr class="total"><td>Total</td><td class="num">${money(r.total_cents)}</td><td></td></tr></table>${siteLabel ? html`<p class="muted small" style="margin:6px 0 0">${siteLabel}</p>` : ""}</div>`;
+      <tr class="total"><td>Total</td><td class="num">${money(r.total_cents)}</td><td></td></tr></table>${siteLabel ? html`<p class="muted small" style="margin:6px 0 0">${siteLabel}</p>` : ""}${jobActions(j, isolated)}</div>`;
   }
 
   // ---- Job ----------------------------------------------------------------------------------------
@@ -429,7 +473,7 @@
       supplier: p.vendor_name_raw || p.vendor_key || "", committed_cents: p.total_cents,
       cancelled: p.cancelled, quote: p.quote, status: p.status, order_type: p.order_type,
     }));
-    const rev = st.review || (st.review = { campuses: null, projects: null, sort: {} });
+    const rev = reviewState();
     const f = fresh[0] || {};
     const model = Rev.build({
       jobs: st.settings.jobs.filter((j) => j.active !== false),
@@ -437,6 +481,7 @@
       week: q.w || null, campuses: rev.campuses, projects: rev.projects, tab, sort: rev.sort, showNames,
       today: C.todayIso(), updated: f.hh2_through || f.po_as_of || null,
     });
+    rev.week = model.week;
     return raw(Rev.html(model));
   }
   function wireReview() {
@@ -456,7 +501,7 @@
       document.addEventListener("click", () => $$(".wcr-dd.open").forEach((d) => d.classList.remove("open")));
     }
     const week = $("#wcr-week");
-    if (week) week.addEventListener("change", () => { location.hash = `#/review?tab=${tab}&w=${week.value}`; });
+    if (week) week.addEventListener("change", () => { rev.week = week.value; location.hash = `#/review?tab=${tab}&w=${week.value}`; });
     const clear = $("#wcr-clear");
     if (clear) clear.addEventListener("click", () => { rev.campuses = null; rev.projects = null; render(); });
     const read = (sel) => $$(sel, box).filter((x) => x.checked).map((x) => x.value);
@@ -767,17 +812,54 @@
   // ---- wiring ------------------------------------------------------------------------------------------------------
   function wirePortfolio() {
     const m = monthQ(st.route.q);
-    const cur = (st.route.q.c || "").trim();
-    const go = (name) => {
-      const same = cur && String(name).toLowerCase() === cur.toLowerCase();
-      location.hash = !name || same ? `#/?m=${m}` : portfolioHref(m, name);
+    const goHash = (hash) => { if (location.hash === hash) render(); else location.hash = hash; };
+    const clearAll = () => {
+      const rev = reviewState();
+      rev.campuses = null;
+      rev.projects = null;
+      goHash(`#/?m=${m}`);
+    };
+    const isolateCampus = (name) => {
+      const rev = reviewState();
+      const cur = rev.campuses && rev.campuses.length === 1 ? portfolioCampus(rev.campuses[0]) : "";
+      if (cur.toLowerCase() === String(name).toLowerCase()) clearAll();
+      else {
+        rev.campuses = [reviewCampus(name)];
+        rev.projects = null;
+        goHash(portfolioHref(m, name, ""));
+      }
+    };
+    const isolateProject = (jobNumber) => {
+      const rev = reviewState();
+      const cur = rev.projects && rev.projects.length === 1 ? rev.projects[0] : "";
+      const job = st.settings.jobByNumber[jobNumber];
+      const campus = portfolioCampus(reviewCampus((job && job.campus) || "Other"));
+      if (cur === jobNumber) {
+        rev.projects = null;
+        goHash(portfolioHref(m, campus, ""));
+      } else {
+        rev.projects = [jobNumber];
+        rev.campuses = [reviewCampus(campus)];
+        goHash(portfolioHref(m, campus, jobNumber));
+      }
+    };
+    const openReview = (campusName, jobNumber) => {
+      const rev = reviewState();
+      const job = jobNumber && st.settings.jobByNumber[jobNumber];
+      const campus = campusName || (job && (job.campus || "Other")) || "";
+      rev.campuses = campus ? [reviewCampus(campus)] : null;
+      rev.projects = jobNumber ? [jobNumber] : null;
+      location.hash = reviewHref();
     };
     $$(".pf [data-campus]").forEach((el) => {
-      el.addEventListener("click", () => go(el.getAttribute("data-campus")));
-      el.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); go(el.getAttribute("data-campus")); } });
+      el.addEventListener("click", () => isolateCampus(el.getAttribute("data-campus")));
+      el.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); isolateCampus(el.getAttribute("data-campus")); } });
     });
+    $$(".pf [data-dive-campus]").forEach((el) => el.addEventListener("click", (ev) => { ev.stopPropagation(); openReview(el.getAttribute("data-dive-campus"), ""); }));
+    $$(".pf [data-isolate]").forEach((el) => el.addEventListener("click", () => isolateProject(el.getAttribute("data-isolate"))));
+    $$(".pf [data-dive-job]").forEach((el) => el.addEventListener("click", () => openReview("", el.getAttribute("data-dive-job"))));
     const all = $("#pf-all");
-    if (all) all.addEventListener("click", () => { location.hash = `#/?m=${m}`; });
+    if (all) all.addEventListener("click", clearAll);
   }
 
   function wire() {

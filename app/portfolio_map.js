@@ -301,5 +301,24 @@
     return `<svg class="pf-svg" viewBox="${vb}" role="img" aria-label="United States, one dot per campus">${states}${marks}</svg>`;
   }
 
-  return { PLACES, locate, project, compile, svg, map: () => MAP };
+  /** Sum a v_job_month list. jobNumbers null means every row; an array limits the sum. */
+  function monthScope(rows, jobNumbers) {
+    const allow = jobNumbers == null ? null : new Set(jobNumbers);
+    const t = { labor: 0, rent: 0, purch: 0, pending: 0, all: 0, hours: 0, held: 0, pendingLines: 0, withCost: 0 };
+    for (const r of rows || []) {
+      if (allow && !allow.has(r.job_number)) continue;
+      t.labor += r.labor_cents || 0;
+      t.rent += (r.rental_cents || 0) + (r.rental_lo_cents || 0) + (r.offfeed_cents || 0);
+      t.purch += r.purchase_cents || 0;
+      t.pending += r.pending_cents || 0;
+      t.all += r.total_cents || 0;
+      t.hours += +r.labor_hours || 0;
+      t.held += +r.labor_held_hours || 0;
+      t.pendingLines += r.pending_lines || 0;
+      if (r.total_cents) t.withCost++;
+    }
+    return t;
+  }
+
+  return { PLACES, locate, project, compile, svg, monthScope, map: () => MAP };
 }));

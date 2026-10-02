@@ -214,10 +214,17 @@ body:has(.pf) main { max-width: 1280px; }
 .pf-side-title { font-size: 16px; font-weight: 650; }
 .pf-side-col { color: var(--muted); font-size: 11px; letter-spacing: .04em; text-align: right; }
 .pf-rows { overflow: auto; flex: 1 1 auto; }
-.pf button.pf-all, .pf button.pf-row { display: flex; width: 100%; align-items: flex-start; gap: 10px; text-align: left; background: transparent; color: inherit; border: 0; border-bottom: 1px solid #243140; border-radius: 0; padding: 10px 14px; }
-.pf button.pf-all { color: var(--muted); font-weight: 600; }
-.pf button.pf-all:hover, .pf button.pf-row:hover { background: rgba(255, 255, 255, .03); border-color: #243140; }
-.pf button.pf-all.on, .pf button.pf-row.on { background: rgba(58, 208, 122, .08); box-shadow: inset 3px 0 0 var(--pf-green); }
+.pf button.pf-all { display: flex; width: 100%; align-items: flex-start; gap: 10px; text-align: left; background: transparent; color: var(--muted); font-weight: 600; border: 0; border-bottom: 1px solid #243140; border-radius: 0; padding: 10px 14px; }
+.pf button.pf-all:hover { background: rgba(255, 255, 255, .03); border-color: #243140; }
+.pf button.pf-all.on { background: rgba(58, 208, 122, .08); box-shadow: inset 3px 0 0 var(--pf-green); }
+.pf-row { display: flex; align-items: stretch; border-bottom: 1px solid #243140; }
+.pf-row.on { background: rgba(58, 208, 122, .08); box-shadow: inset 3px 0 0 var(--pf-green); }
+.pf button.pf-row-hit { flex: 1 1 auto; display: flex; align-items: flex-start; gap: 10px; min-width: 0; text-align: left; background: transparent; color: inherit; border: 0; border-radius: 0; padding: 10px 8px 10px 14px; }
+.pf button.pf-row-hit:hover { background: rgba(255, 255, 255, .03); border-color: transparent; }
+.pf button.pf-dive { flex: 0 0 auto; align-self: center; margin: 0 8px 0 0; background: none; border: 0; color: var(--accent); padding: 4px 6px; font-size: 12.5px; }
+.pf button.pf-dive:hover { border-color: transparent; text-decoration: underline; }
+.pf-card-actions { display: flex; gap: 14px; margin: 8px 0 0; }
+.pf .card.on { box-shadow: inset 3px 0 0 var(--pf-green); }
 .pf-bullet { width: 8px; height: 8px; border-radius: 50%; background: #8b97a6; margin-top: 6px; flex: 0 0 auto; }
 .pf-bullet.on { background: var(--pf-green); box-shadow: 0 0 0 3px rgba(58, 208, 122, .22); }
 .pf-row-main { display: flex; flex-direction: column; min-width: 0; gap: 1px; }

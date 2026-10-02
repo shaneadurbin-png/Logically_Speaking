@@ -1,9 +1,11 @@
 /* test_portfolio_map.js - campus dots sit on the state they name, and the
-   baked outlines still match the vendored GeoJSON. */
+   baked outlines still match the vendored GeoJSON. A campus filter and a
+   project filter each change the month totals and the review's rows. */
 "use strict";
 const fs = require("fs"), path = require("path");
 const { check, eq, ok, done } = require("./lib.js");
 const PM = require("../app/portfolio_map.js");
+const Rev = require("../app/review.js");
 
 const EXPECT = {
   "CDR E1": "Iowa", CDR: "Iowa", BWI: "Maryland", PHL: "Pennsylvania", SBN: "Indiana",
@@ -54,6 +56,62 @@ check("the svg draws every campus it is given, and close dots stay apart", () =>
   const at = (id) => { const m = svg.match(new RegExp(`data-campus="${id}"[\\s\\S]*?class="pf-dot-mark" cx="([\\d.-]+)" cy="([\\d.-]+)"`)); return [+m[1], +m[2]]; };
   const d = at("CMH").map((n, i) => n - at("LCK")[i]);
   ok(Math.hypot(d[0], d[1]) >= 12, "CMH and LCK both show");
+});
+
+check("a campus filter and a project filter each change the month totals and the review rows", () => {
+  const rows = [
+    { job_number: "50-60-225121", labor_cents: 1904500, rental_cents: 978100, purchase_cents: 31300, total_cents: 2913900, labor_hours: 228, labor_held_hours: 24, pending_lines: 2 },
+    { job_number: "50-60-225008", labor_cents: 100000, rental_cents: 0, purchase_cents: 50000, total_cents: 150000, labor_hours: 10 },
+  ];
+  const all = PM.monthScope(rows, null);
+  const campusJobs = PM.monthScope(rows, ["50-60-225121"]);
+  const projectJobs = PM.monthScope(rows, ["50-60-225008"]);
+  eq(all.all, 3063900);
+  eq(all.labor, 2004500);
+  eq(campusJobs.all, 2913900);
+  eq(campusJobs.rent, 978100);
+  eq(projectJobs.all, 150000);
+  eq(projectJobs.purch, 50000);
+  eq(projectJobs.hours, 10);
+  ok(campusJobs.all !== all.all && projectJobs.all !== all.all && projectJobs.all !== campusJobs.all, "each filter changes the month total");
+
+  const jobs = [
+    { job_number: "50-60-225121", short_name: "DC4", campus: "CDR E1" },
+    { job_number: "50-60-225008", short_name: "204", campus: "SBN" },
+  ];
+  const labor = [
+    { week_ending: "2026-09-20", job_number: "50-60-225121", employee: "Ada", employee_key: "1", certified_class: "#LAB-J", pay_type: "REG", pay_type_name: "REG", hours: 8, cost_cents: 800 },
+    { week_ending: "2026-09-20", job_number: "50-60-225008", employee: "Bea", employee_key: "2", certified_class: "#LAB-J", pay_type: "REG", pay_type_name: "REG", hours: 3, cost_cents: 300 },
+  ];
+  const rentals = [
+    { job_number: "50-60-225121", vendor_key: "united_rentals", vendor_name: "United Rentals", description: "Lift", category: "Aerial", qty: 1, monthly_rent_cents: 10000 },
+    { job_number: "50-60-225008", vendor_key: "sunbelt", vendor_name: "Sunbelt Rentals", description: "Fork", category: "Aerial", qty: 2, monthly_rent_cents: 20000 },
+  ];
+  const purchases = [
+    { doc_date: "2026-09-18", doc_number: "PO-A", job_number: "50-60-225121", supplier: "Acme", committed_cents: 2500 },
+    { doc_date: "2026-09-18", doc_number: "PO-B", job_number: "50-60-225008", supplier: "Bolt", committed_cents: 900 },
+  ];
+  const base = { jobs, labor, rentals, purchases, week: "2026-09-20", today: "2026-10-02", showNames: true };
+  const whole = Rev.build(base);
+  const byCampus = Rev.build(Object.assign({}, base, { campuses: ["CDR E1"] }));
+  const byProject = Rev.build(Object.assign({}, base, { projects: ["50-60-225008"] }));
+  eq(whole.labor.cost, 1100);
+  eq(whole.labor.headcount, 2);
+  eq(whole.rental.lines, 2);
+  eq(byCampus.labor.cost, 800);
+  eq(byCampus.labor.headcount, 1);
+  eq(byCampus.rental.lines, 1);
+  eq(byCampus.rental.qty, 1);
+  eq(byCampus.campusAll, false);
+  eq(byCampus.campusLabel, "CDR E1");
+  eq(byProject.labor.cost, 300);
+  eq(byProject.labor.headcount, 1);
+  eq(byProject.rental.lines, 1);
+  eq(byProject.rental.qty, 2);
+  eq(byProject.projectAll, false);
+  ok(byProject.po.rows.length === 1 && byProject.po.rows[0].po === "PO-B", "project filter keeps only that job's POs");
+  ok(byCampus.po.rows.length === 1 && byCampus.po.rows[0].po === "PO-A", "campus filter keeps only that campus's POs");
+  ok(byCampus.labor.cost !== whole.labor.cost && byProject.labor.cost !== whole.labor.cost, "each filter changes the review");
 });
 
 done();
