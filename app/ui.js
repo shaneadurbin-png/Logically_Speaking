@@ -3,18 +3,20 @@
    File names, vendor job labels, notes and names all come from outside.
 
    Pages (hash routes):
-     #/                 Portfolio - the map, this month's cost by campus, then the jobs
+     #/                 Portfolio - the map, the ten campuses, this month's four tiles. It ends there.
+     #/c/<code>?m=      Campus - that campus's tiles, then its projects as links
+     #/p/<job>?m=       Project - Campus > Project, and the weekly cost review for that job only
      #/job/<n>?m=       Job - the tiles, labor by class and code, rentals, purchases, held
      #/report/<n>?m=    Report - print it, choose Save as PDF (#/report/all for every job)
-     #/review?tab=      Weekly cost review - labor, rentals, committed POs (tab=labor|rental|po&w=week)
+     #/review           Redirect - a selected job opens #/p/, otherwise the portfolio
      #/statement/<n>?m=&v=  the client's rental statement for one vendor
      #/update           Update - drop the files, read the cards, press Record
      #/settings         Settings - jobs, vendors, their job names, rate tables, employees, pay types, people, files */
 (function (root) {
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
-    Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig, PM = root.PortfolioMap;
-  const RELEASE = "0.1.10";
+    Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig, PM = root.PortfolioMap, Pages = root.Pages;
+  const RELEASE = "0.1.12";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -56,9 +58,11 @@
       if (!st.settings) st.settings = await loadSettings();
       const r = st.route;
       let body;
-      if (r.page === "job" && r.parts[1]) body = await jobView(r.parts[1], monthQ(r.q));
+      if (r.page === "review") body = await reviewPage();
+      else if (r.page === "c" && r.parts[1]) body = await campusView(decodeURIComponent(r.parts[1]), monthQ(r.q));
+      else if (r.page === "p" && r.parts[1]) body = await projectView(decodeURIComponent(r.parts[1]), monthQ(r.q));
+      else if (r.page === "job" && r.parts[1]) body = await jobView(r.parts[1], monthQ(r.q));
       else if (r.page === "report") body = await reportView(r.parts[1] || "all", monthQ(r.q));
-      else if (r.page === "review") body = await reviewView();
       else if (r.page === "statement" && r.parts[1]) body = await statementView(r.parts[1], monthQ(r.q), r.q.v);
       else if (r.page === "update") body = updateView();
       else if (r.page === "settings") body = await settingsView(r.q.tab || "jobs");
@@ -126,11 +130,12 @@
   /** Navigation and the session only. opts.freshness and opts.reports are the uploads already on file; the header does not list them. Update shows the current drop, and Settings keeps the file history. */
   function headerMarkup(opts) {
     const page = opts.page || "";
+    const portOn = !page || page === "c" || page === "p";
     const chip = (cls, text) => html`<span class="chip ${cls}"><span class="dot"></span>${text}</span>`;
-    const nav = (p, label) => html`<a href="${p === "" ? (opts.home || "#/") : `#/${p}`}" class="${page === p || (p === "" && !page) ? "on" : ""}">${label}</a>`;
+    const nav = (p, label, on) => html`<a href="${p === "" ? (opts.home || "#/") : `#/${p}`}" class="${on ? "on" : ""}">${label}</a>`;
     const session = opts.mode === "demo" ? chip("demo", "Demo: nothing is saved") : html`<span class="chip">${opts.user && opts.user.email ? opts.user.email : ""} · ${opts.role || ""}</span>`;
     return html`<header class="top"><span class="brand">GR Cost</span>
-      <nav>${nav("", "Portfolio")}${nav("review", "Review")}${opts.canEdit ? nav("update", "Update") : ""}${nav("settings", "Settings")}</nav>
+      <nav>${nav("", "Portfolio", portOn)}${nav("review", "Review", page === "review")}${opts.canEdit ? nav("update", "Update", page === "update") : ""}${nav("settings", "Settings", page === "settings")}</nav>
       <span class="spacer"></span>
       ${session}
     </header>`;
@@ -138,7 +143,7 @@
   async function topView() {
     const f = (await st.db.view("v_freshness"))[0] || {};
     return headerMarkup({
-      page: st.route.page, canEdit: st.db.canEdit(), mode: st.db.mode, user: st.user, role: st.db.role, home: portfolioHome(),
+      page: st.route.page, canEdit: st.db.canEdit(), mode: st.db.mode, user: st.user, role: st.db.role, home: Pages.portfolioHref(monthQ(st.route.q)),
       freshness: f, reports: f.uploads || [],
     });
   }
@@ -146,133 +151,59 @@
 
   // ---- Portfolio ----------------------------------------------------------------------------------
   const monthNav = (m, base) => html`<div class="row noprint"><a href="${base}?m=${prevMonth(m)}">&larr; ${C.fmtMonth(prevMonth(m))}</a><span class="big">${C.fmtMonth(m)}</span><a href="${base}?m=${nextMonth(m)}">${C.fmtMonth(nextMonth(m))} &rarr;</a></div>`;
-  const portfolioHref = (month, campus, job) => `#/?m=${month}${campus ? `&c=${encodeURIComponent(campus)}` : ""}${job ? `&j=${encodeURIComponent(job)}` : ""}`;
   const reviewState = () => st.review || (st.review = { campuses: null, projects: null, sort: {} });
-  /** The review calls a blank campus Unassigned. The portfolio list calls it Other. */
-  const reviewCampus = (name) => (!name || name === "Other" ? "Unassigned" : name);
-  const portfolioCampus = (name) => (name === "Unassigned" ? "Other" : name);
-  function portfolioHome() {
-    const rev = st.review || {};
-    const campus = rev.campuses && rev.campuses.length === 1 ? portfolioCampus(rev.campuses[0]) : "";
-    const job = rev.projects && rev.projects.length === 1 ? rev.projects[0] : "";
-    return portfolioHref(monthQ(st.route.q), campus, job);
+  function laborNoteFor(rows, month, fresh) {
+    const tot = PM.monthScope(rows, null);
+    const f = (fresh || [])[0] || {};
+    if (!tot.hours && f.hh2_through && C.monthOf(f.hh2_through) !== month) return `no hours in ${C.fmtMonth(month)} yet; HH2 through ${C.fmtDay(f.hh2_through)} (see ${C.fmtMonth(C.monthOf(f.hh2_through))})`;
+    if (tot.hours) return `${hours(tot.hours)} hours${tot.held ? `, ${hours(tot.held)} held` : ""}`;
+    return "";
   }
-  function reviewHref() {
-    const w = st.review && st.review.week;
-    return `#/review?tab=labor${w ? `&w=${encodeURIComponent(w)}` : ""}`;
-  }
-  /** Hash c/j on the portfolio is the isolation. With neither, keep st.review (the way back from the review). */
-  function syncPortfolioSelection() {
-    const rev = reviewState();
-    const q = st.route.q;
-    if (!("c" in q) && !("j" in q)) return rev;
-    const names = st.settings.jobs.filter((j) => j.active !== false).map((j) => j.campus || "Other");
-    const wanted = (q.c || "").trim();
-    const hit = names.find((n) => n.toLowerCase() === wanted.toLowerCase());
-    const jobNo = (q.j || "").trim();
-    const job = jobNo && st.settings.jobByNumber[jobNo];
-    const jobOk = job && job.active !== false;
-    if (jobOk) {
-      rev.projects = [job.job_number];
-      rev.campuses = [reviewCampus(job.campus || "Other")];
-    } else if (hit) {
-      rev.campuses = [reviewCampus(hit)];
-      rev.projects = null;
-    } else {
-      rev.campuses = null;
-      rev.projects = null;
-    }
-    return rev;
+  async function monthRows(m) {
+    const [rows, fresh] = await Promise.all([st.db.view("v_job_month", { month: m + "-01" }), st.db.view("v_freshness").catch(() => [])]);
+    return { rows, fresh };
   }
   async function portfolioView(m) {
-    const rows = await st.db.view("v_job_month", { month: m + "-01" });
-    const by = Object.fromEntries(rows.map((r) => [r.job_number, r]));
-    const [siteRows, plexRows, dumpRows, fresh] = await Promise.all([st.db.view("v_site_services_month", { month: m + "-01" }).catch(() => []), st.db.view("v_trailer_plex_month", { month: m + "-01" }).catch(() => []), st.db.view("v_dumpster_month", { month: m + "-01" }).catch(() => []), st.db.view("v_freshness").catch(() => [])]);
-    const siteOf = (n) => SS.shortLabel(SS.fromViews(siteRows.filter((x) => x.job_number === n), plexRows.filter((x) => x.job_number === n)), pullsOf(dumpRows.filter((x) => x.job_number === n)));
-    const groups = {};
-    for (const j of st.settings.jobs.filter((j) => j.active !== false)) (groups[j.campus || "Other"] = groups[j.campus || "Other"] || []).push(j);
-    const rev = syncPortfolioSelection();
-    const campusOn = rev.campuses ? rev.campuses.map(portfolioCampus) : null;
-    const projectOn = rev.projects || null;
-    const isolated = !!(campusOn || projectOn);
-    const scopeIds = isolated ? st.settings.jobs.filter((j) => j.active !== false && (!campusOn || campusOn.includes(j.campus || "Other")) && (!projectOn || projectOn.includes(j.job_number))).map((j) => j.job_number) : null;
-    const tot = PM.monthScope(rows, scopeIds);
-    const monthAll = isolated ? PM.monthScope(rows, null) : tot;
-    // the month shown may simply be ahead of the time sheets: say so instead of showing a bare $0
-    const f = fresh[0] || {};
-    const laborNote = !tot.hours && !monthAll.hours && f.hh2_through && C.monthOf(f.hh2_through) !== m ? `no hours in ${C.fmtMonth(m)} yet; HH2 through ${C.fmtDay(f.hh2_through)} (see ${C.fmtMonth(C.monthOf(f.hh2_through))})`
-      : tot.hours ? `${hours(tot.hours)} hours${tot.held ? `, ${hours(tot.held)} held` : ""}` : "";
-    const campuses = Object.entries(groups).map(([name, jobs]) => {
-      const t = PM.monthScope(rows, jobs.map((j) => j.job_number));
-      const place = PM.locate(name);
-      return { name, jobs, total: t.all, hours: t.hours, held: t.held, place,
-        region: (jobs.find((j) => j.region) || {}).region || (place && place.place) || "",
-        hasCost: t.all !== 0, active: t.all !== 0 || t.hours !== 0 || t.held !== 0 };
-    }).sort((a, b) => (b.total - a.total) || a.name.localeCompare(b.name));
-    const singleCampus = campusOn && campusOn.length === 1 ? campusOn[0] : "";
-    const singleProject = projectOn && projectOn.length === 1 ? projectOn[0] : "";
-    let shown = campuses;
-    if (campusOn) shown = shown.filter((c) => campusOn.includes(c.name));
-    if (projectOn) shown = shown.map((c) => Object.assign({}, c, { jobs: c.jobs.filter((j) => projectOn.includes(j.job_number)) })).filter((c) => c.jobs.length);
-    const points = campuses.filter((c) => c.place).map((c) => ({ id: c.name, name: c.name, lon: c.place.lon, lat: c.place.lat, hasCost: c.hasCost, selected: !!singleCampus && c.name === singleCampus }));
-    const hit = singleCampus ? campuses.find((c) => c.name === singleCampus) : null;
-    const job = singleProject ? (st.settings.jobByNumber[singleProject] || {}) : null;
-    const scopeName = singleProject ? PM.selectionLabel(job.campus || singleCampus, job.short_name || singleProject) : singleCampus ? singleCampus : campusOn ? n1(campusOn.length, "campus", "campuses") : n1(campuses.length, "campus", "campuses");
-    return html`<div class="pf">
-      <div class="pf-head">
-        <div class="pf-intro">
-          <h1 class="pf-title">Mission Critical</h1>
-          <p class="pf-sub">${scopeName} · ${money(tot.all, true)} this month. Figures come from HH2, the on-rent reports, and Purchase Pro.</p>
-        </div>
-        <div class="pf-tools noprint">
-          <div class="row pf-months"><a href="${portfolioHref(prevMonth(m), singleCampus, singleProject)}">&larr; ${C.fmtMonth(prevMonth(m))}</a><span class="big">${C.fmtMonth(m)}</span><a href="${portfolioHref(nextMonth(m), singleCampus, singleProject)}">${C.fmtMonth(nextMonth(m))} &rarr;</a></div>
-          <span class="row"><a href="${reviewHref()}"><button type="button">Weekly review</button></a><a href="#/report/all?m=${m}"><button>Report (PDF)</button></a><button id="buckets" title="one row per job, month and bucket, the shape GRforecast imports">Export for GRforecast</button></span>
-        </div>
-      </div>
-      <div class="pf-band">
-        <div class="pf-map">${raw(PM.svg({ points, selectedState: hit && hit.place ? hit.place.state : "" }))}
-          <div class="pf-legend"><span><i class="cost"></i>Has cost this month</span><span><i></i>No cost yet</span><span class="note">Each dot is a campus, where it is.</span></div>
-        </div>
-        <aside class="pf-side">
-          <div class="pf-side-in">
-            <div class="pf-side-head"><div class="pf-side-title">Campuses</div><div class="pf-side-col">this month</div></div>
-            <button type="button" id="pf-all" class="pf-all ${isolated ? "" : "on"}">All</button>
-            <div class="pf-rows">${campuses.map((c) => html`<div class="pf-row ${singleCampus === c.name ? "on" : ""}">
-              <button type="button" class="pf-row-hit" data-campus="${c.name}">
-                <span class="pf-bullet ${c.hasCost ? "on" : ""}"></span>
-                <span class="pf-row-main"><span class="pf-row-name">${c.name}</span>${c.region ? html`<span class="pf-row-region">${c.region}</span>` : ""}${c.active ? html`<span class="pf-live">Active</span>` : ""}</span>
-                <span class="pf-row-fig"><span class="pf-row-money">${money(c.total, true)}</span><span class="pf-row-jobs">${n1(c.jobs.length, "job")}</span></span>
-              </button>
-              <button type="button" class="pf-dive" data-dive-campus="${c.name}">Review</button>
-            </div>`)}</div>
-          </div>
-        </aside>
-      </div>
-      <div class="tiles">${tile("labor", "Labor", tot.labor, laborNote)}${tile("equipment", "Rentals to client", tot.rent, "on-rent reports and confirmed recurring charges")}${tile("materials", "Purchases", tot.purch, tot.pending ? `${money(tot.pending, true)} awaiting a decision` : "")}${tile("total", "Total", tot.all, `${n1(tot.withCost, "job")} with cost`)}</div>
-      ${tot.pendingLines && st.db.canEdit() ? html`<p class="noprint"><a href="#/settings?tab=purchases">${n1(tot.pendingLines, "PO awaits", "POs await")} a decision &rarr;</a></p>` : ""}
-      ${shown.map((c) => html`<h2>${c.name}${c.region ? html` <span class="muted small">${c.region}</span>` : ""}</h2><div class="cards">${c.jobs.map((j) => jobCard(j, by[j.job_number], m, siteOf(j.job_number), singleProject === j.job_number))}</div>`)}
-      ${st.settings.jobs.length === 0 ? html`<div class="notice">No jobs yet. Drop the Projects register or an HH2 export on Update, or add them in <a href="#/settings">Settings</a>.</div>` : ""}
-    </div>`;
+    const { rows, fresh } = await monthRows(m);
+    const tot = PM.monthScope(rows, null);
+    return raw(Pages.portfolio({
+      month: m, jobs: st.settings.jobs, rows, laborNote: laborNoteFor(rows, m, fresh),
+      pendingLines: tot.pendingLines, canEdit: st.db.canEdit(),
+    }));
   }
+  async function campusView(code, m) {
+    const { rows, fresh } = await monthRows(m);
+    const list = Pages.jobsForCampus(st.settings.jobs, code);
+    const ids = list.map((j) => j.job_number);
+    const tot = PM.monthScope(rows, ids);
+    const f = (fresh || [])[0] || {};
+    const note = !tot.hours && f.hh2_through && C.monthOf(f.hh2_through) !== m ? `no hours in ${C.fmtMonth(m)} yet; HH2 through ${C.fmtDay(f.hh2_through)}`
+      : tot.hours ? `${hours(tot.hours)} hours${tot.held ? `, ${hours(tot.held)} held` : ""}` : "";
+    return raw(Pages.campus({ code, month: m, jobs: st.settings.jobs, rows, laborNote: note }));
+  }
+  async function projectView(n, m) {
+    const scope = Pages.reviewScope(st.settings.jobs, n);
+    const job = scope.job || { job_number: n, short_name: n, campus: null, active: true };
+    const { rows, fresh } = await monthRows(m);
+    const tot = PM.monthScope(rows, [n]);
+    const f = (fresh || [])[0] || {};
+    const note = tot.hours ? `${hours(tot.hours)} hours${tot.held ? `, ${hours(tot.held)} held` : ""}` : "";
+    const q = st.route.q;
+    const reviewHtml = Pages.retargetReview(await buildReview({
+      jobs: scope.jobs.length ? scope.jobs : [job],
+      projects: [n],
+      tab: reviewTab(q),
+      week: q.w || null,
+    }), n, m);
+    return raw(Pages.project({ job, month: m, rows, laborNote: note, reviewHtml, tab: reviewTab(q), week: q.w || "" }));
+  }
+
   const tile = (cls, label, cents, sub) => html`<div class="tile ${cls}"><div class="label">${label}</div><div class="value">${money(cents, true)}</div><div class="sub">${sub || ""}</div></div>`;
   /** short_name is the label; name is the longer title. The register and HH2 often store the same string in both, and the report used to print it twice. */
   function jobHead(j) {
     const short = (j && (j.short_name || j.job_number)) || "";
     const name = j && j.name && String(j.name).trim() !== String(short).trim() ? j.name : "";
     return { short, name };
-  }
-  function jobActions(j, isolated) {
-    return html`<p class="pf-card-actions noprint"><button type="button" class="link" data-isolate="${j.job_number}">${isolated ? "Showing this project" : "This project"}</button><button type="button" class="link" data-dive-job="${j.job_number}">Weekly review</button></p>`;
-  }
-  function jobCard(j, r, m, siteLabel, isolated) {
-    const head = jobHead(j);
-    const on = isolated ? " on" : "";
-    if (!r || !r.total_cents && !r.labor_held_hours && !r.pending_lines) return html`<div class="card${on}"><h3><a href="#/job/${j.job_number}?m=${m}">${head.short}</a> <span class="muted small">${j.job_number}</span></h3><p class="muted">Nothing recorded for ${C.fmtMonth(m)}.</p>${siteLabel ? html`<p class="muted small">${siteLabel}</p>` : ""}${jobActions(j, isolated)}</div>`;
-    return html`<div class="card${on}"><h3><a href="#/job/${j.job_number}?m=${m}">${head.short}</a> <span class="muted small">${head.name || j.job_number}</span></h3>
-      <table><tr><td>Labor</td><td class="num">${money(r.labor_cents)}</td><td class="muted small">${hours(r.labor_hours)} h${r.labor_held_hours ? html`, <span class="warn">${hours(r.labor_held_hours)} held</span>` : ""}</td></tr>
-      <tr><td>Rentals</td><td class="num">${money(r.rental_cents + (r.offfeed_cents || 0))}</td><td class="muted small">${r.rental_lines} on rent${r.offfeed_lines ? `, ${r.offfeed_lines} recurring` : ""}${r.rental_lo_cents ? `, Liberty-owned ${money(r.rental_lo_cents)}` : ""}</td></tr>
-      <tr><td>Purchases</td><td class="num">${money(r.purchase_cents)}</td><td class="muted small">${r.pending_lines ? html`<span class="warn">${n1(r.pending_lines, "PO")} awaiting a decision</span>` : ""}</td></tr>
-      <tr class="total"><td>Total</td><td class="num">${money(r.total_cents)}</td><td></td></tr></table>${siteLabel ? html`<p class="muted small" style="margin:6px 0 0">${siteLabel}</p>` : ""}${jobActions(j, isolated)}</div>`;
   }
 
   // ---- Job ----------------------------------------------------------------------------------------
@@ -446,9 +377,32 @@
   }
 
   // ---- Weekly cost review (the Liberty dashboard) ---------------------------------------------------
-  async function reviewView() {
-    const q = st.route.q;
-    const tab = q.tab === "rental" || q.tab === "po" ? q.tab : "labor";
+  function reviewTab(q) {
+    if (q.tab === "rental") return "rental";
+    if (q.tab === "po" || q.tab === "committed") return "po";
+    return "labor";
+  }
+  /** A c or j on #/review is the same isolation the portfolio uses. */
+  function applyReviewQuery(rev, q) {
+    const code = PM.canonicalCampus((q.c || "").trim());
+    const jobNo = (q.j || "").trim();
+    const job = jobNo && st.settings.jobByNumber[jobNo];
+    const jobOk = job && job.active !== false;
+    if (jobOk) {
+      rev.projects = [job.job_number];
+      const jobCode = PM.canonicalCampus(job.campus);
+      rev.campuses = jobCode ? [jobCode] : null;
+    } else if (code) {
+      rev.campuses = [code];
+      rev.projects = null;
+    } else {
+      rev.campuses = null;
+      rev.projects = null;
+    }
+  }
+  async function buildReview(opts) {
+    const o = opts || {};
+    const tab = o.tab || "labor";
     const db = st.db;
     const showNames = db.canEdit();
     const [laborRows, items, pos, fresh] = await Promise.all([
@@ -458,85 +412,73 @@
       db.view("v_freshness").catch(() => [])]);
     const names = Object.fromEntries((st.settings.employees || []).map((e) => [e.employee_number, e.name]));
     const vendors = st.settings.vendorByKey || {};
-    const labor = laborRows.filter((r) => r.status === "priced").map((r) => ({
+    const ids = new Set(o.projects || []);
+    const keep = (row) => !ids.size || ids.has(row.job_number);
+    const labor = laborRows.filter((r) => r.status === "priced" && keep(r)).map((r) => ({
       week_ending: r.week_ending || L.weekEnding(r.work_date), job_number: r.job_number,
       employee: showNames ? (names[r.employee_number] || r.employee_number) : null,
       employee_key: r.employee_number, certified_class: r.certified_class,
       cost_code: r.cost_code, cost_code_name: r.cost_code_name, pay_type: r.pay_type, pay_type_name: r.pay_type_name,
       hours: r.hours != null ? +r.hours : (r.hours_x100 || 0) / 100, cost_cents: r.cost_cents || 0,
     }));
-    const rentals = items.filter((i) => !i.off_rent_date).map((i) => ({
+    const rentals = items.filter((i) => !i.off_rent_date && keep(i)).map((i) => ({
       job_number: i.job_number, vendor_key: i.vendor_key,
       vendor_name: (vendors[i.vendor_key] && vendors[i.vendor_key].name) || i.vendor_key,
       description: i.description || "(no description)",
       category: (i.raw && (i.raw.cat_class || i.raw.code1_label)) || "Equipment",
       qty: +i.qty || 0, monthly_rent_cents: i.monthly_rent_cents, liberty_owned: !!i.liberty_owned,
     }));
-    const purchases = pos.map((p) => ({
+    const purchases = pos.filter(keep).map((p) => ({
       doc_date: p.doc_date, doc_number: p.doc_number, job_number: p.job_number,
       supplier: p.vendor_name_raw || p.vendor_key || "", committed_cents: p.total_cents,
       cancelled: p.cancelled, quote: p.quote, status: p.status, order_type: p.order_type,
     }));
     const rev = reviewState();
     const f = fresh[0] || {};
+    const onDates = Object.values(f.onrent_as_of || {}).filter(Boolean).sort();
     const model = Rev.build({
-      jobs: st.settings.jobs.filter((j) => j.active !== false),
+      jobs: o.jobs || [],
       labor, rentals, purchases, rentalSettings: st.settings.rental,
-      week: q.w || null, campuses: rev.campuses, projects: rev.projects, tab, sort: rev.sort, showNames,
+      week: o.week || null, campuses: o.campuses === undefined ? null : o.campuses, projects: o.projects === undefined ? null : o.projects, tab, sort: (o.sort || rev.sort), showNames,
       today: C.todayIso(), updated: f.hh2_through || f.po_as_of || null,
+      onrentAsOf: onDates.length ? onDates[onDates.length - 1] : null,
     });
     rev.week = model.week;
-    return raw(Rev.html(model));
+    return Rev.html(model);
+  }
+  async function reviewPage() {
+    const q = st.route.q;
+    const rev = reviewState();
+    if (q.c || q.j) applyReviewQuery(rev, q);
+    const jobs = st.settings.jobs.filter((j) => j.active !== false);
+    return raw(await buildReview({
+      jobs, week: q.w || null, tab: reviewTab(q), sort: rev.sort,
+      campuses: PM.expandCampuses(jobs, rev.campuses), projects: rev.projects,
+    }));
   }
   function wireReview() {
-    const box = $(".wcr");
+    const box = $(".gr-dash") || $(".wcr");
     if (!box) return;
-    const rev = st.review || (st.review = { campuses: null, projects: null, sort: {} });
-    const tab = st.route.q.tab === "rental" || st.route.q.tab === "po" ? st.route.q.tab : "labor";
-    $$(".wcr-dd-btn", box).forEach((b) => b.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      const dd = b.closest(".wcr-dd");
-      const open = dd.classList.contains("open");
-      $$(".wcr-dd.open").forEach((d) => d.classList.remove("open"));
-      if (!open) dd.classList.add("open");
-    }));
-    if (!st.reviewDoc) {
-      st.reviewDoc = true;
-      document.addEventListener("click", () => $$(".wcr-dd.open").forEach((d) => d.classList.remove("open")));
-    }
-    const week = $("#wcr-week");
-    if (week) week.addEventListener("change", () => { rev.week = week.value; location.hash = `#/review?tab=${tab}&w=${week.value}`; });
-    const clear = $("#wcr-clear");
-    if (clear) clear.addEventListener("click", () => { rev.campuses = null; rev.projects = null; render(); });
-    const read = (sel) => $$(sel, box).filter((x) => x.checked).map((x) => x.value);
-    $$("[data-campus]", box).forEach((el) => el.addEventListener("change", () => {
-      const all = $$("[data-campus]", box);
-      const checked = read("[data-campus]");
-      rev.campuses = checked.length === all.length ? null : checked;
-      rev.projects = null;
-      render();
-    }));
-    const campusAll = $("[data-campus-all]", box);
-    if (campusAll) campusAll.addEventListener("change", () => { rev.campuses = campusAll.checked ? null : []; rev.projects = null; render(); });
-    $$("[data-only-campus]", box).forEach((b) => b.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); rev.campuses = [b.dataset.onlyCampus]; rev.projects = null; render(); }));
-    $$("[data-project]", box).forEach((el) => el.addEventListener("change", () => {
-      const all = $$("[data-project]", box);
-      const checked = read("[data-project]");
-      rev.projects = checked.length === all.length ? null : checked;
-      render();
-    }));
-    const projectAll = $("[data-project-all]", box);
-    if (projectAll) projectAll.addEventListener("change", () => { rev.projects = projectAll.checked ? null : []; render(); });
-    $$("[data-only-project]", box).forEach((b) => b.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); rev.projects = [b.dataset.onlyProject]; render(); }));
+    const rev = reviewState();
+    const tab = reviewTab(st.route.q);
+    const onProject = st.route.page === "p" && st.route.parts[1];
+    const projectJob = onProject ? decodeURIComponent(st.route.parts[1]) : "";
+    const goProject = (job, week) => {
+      location.hash = Pages.projectHref(job, monthQ(st.route.q), { tab, w: week || "" });
+    };
+    const week = $("#selWeek") || $("#wcr-week");
+    if (week) week.addEventListener("change", () => {
+      rev.week = week.value;
+      if (onProject) goProject(projectJob, week.value);
+      else location.hash = `#/review?tab=${tab}&w=${encodeURIComponent(week.value)}`;
+    });
     $$("th[data-sort]", box).forEach((th) => th.addEventListener("click", () => {
       const [which, key] = th.dataset.sort.split(":");
       const cur = rev.sort[which] || {};
       rev.sort[which] = { key, dir: cur.key === key && cur.dir === "asc" ? "desc" : "asc" };
       render();
     }));
-    const mark = (sel) => { const boxes = $$(sel, box); const all = $(sel === "[data-campus]" ? "[data-campus-all]" : "[data-project-all]", box); if (all && boxes.length) all.indeterminate = boxes.some((b) => b.checked) && boxes.some((b) => !b.checked); };
-    mark("[data-campus]"); mark("[data-project]");
-    const print = $("#wcr-print");
+    const print = $("#btnPrint") || $("#wcr-print");
     if (print) print.addEventListener("click", () => window.print());
   }
 
@@ -702,19 +644,11 @@
     if (tab === "jobs") {
       const held = edit ? await st.db.view("v_labor_held", { status: "held:unknown job" }) : [];
       const unknown = {}; for (const h of held) { const u = unknown[h.job_number] || (unknown[h.job_number] = { job_number: h.job_number, job_name: h.job_name, hours: 0 }); u.hours += h.hours; }
-      const tableOpts = (sel) => html`<option value="" ${sel ? "" : "selected"}>(none: labor held)</option>${S.tables.map((t) => html`<option value="${t.code}" ${t.code === sel ? "selected" : ""}>${t.code}${t.description ? ` ${t.description}` : ""}</option>`)}`;
-      body = html`<p class="muted small">Every job the company tracks. Its Sage rate table prices its labor; its tax and markup bill its rentals to the client. Drop the Projects register on Update to add jobs with their campus and region.</p>
-        <table><tr><th>Job</th><th>Short name</th><th>Name</th><th>Campus</th><th>Region</th><th>Rate table</th><th class="num">Rental tax %</th><th class="num">Markup %</th><th>Markup on</th>${edit ? html`<th></th>` : ""}</tr>
-        ${S.jobs.map((j) => html`<tr class="${j.active === false ? "faint" : ""}"><form class="job" data-n="${j.job_number}"><td class="mono">${j.job_number}</td><td>${edit ? html`<input name="short_name" value="${j.short_name}" required style="width:80px">` : j.short_name}</td><td>${j.name || ""}</td>
-          <td>${edit ? html`<input name="campus" value="${j.campus || ""}" style="width:80px">` : j.campus || ""}</td><td>${edit ? html`<input name="region" value="${j.region || ""}" style="width:140px">` : j.region || ""}</td>
-          <td>${edit ? html`<select name="rate_table_code">${tableOpts(j.rate_table_code)}</select>` : j.rate_table_code || html`<span class="warn">none</span>`}</td>
-          <td class="num">${edit ? html`<input name="tax" type="number" step="0.01" min="0" max="50" value="${(j.tax_bp == null ? 700 : j.tax_bp) / 100}" style="width:70px">` : pct(j.tax_bp == null ? 700 : j.tax_bp)}</td>
-          <td class="num">${edit ? html`<input name="markup" type="number" step="0.01" min="0" max="100" value="${(j.markup_bp == null ? 1000 : j.markup_bp) / 100}" style="width:70px">` : pct(j.markup_bp == null ? 1000 : j.markup_bp)}</td>
-          <td>${edit ? html`<select name="markup_base"><option value="rent_plus_tax" ${j.markup_base !== "rent" ? "selected" : ""}>rent + tax</option><option value="rent" ${j.markup_base === "rent" ? "selected" : ""}>rent</option></select>` : j.markup_base === "rent" ? "rent" : "rent + tax"}</td>
-          ${edit ? html`<td><button>Save</button>${j.active === false ? html` <span class="pill">inactive</span>` : ""}</td>` : ""}</form></tr>`)}</table>
+      const JS = root.JobsSettings;
+      if (!JS) throw new Error("jobs_settings.js did not load");
+      body = html`${raw(JS.render({ jobs: S.jobs, tables: S.tables, edit, selected: st.route.q.job || "" }))}
         ${Object.keys(unknown).length ? html`<div class="notice"><b>${n1(Object.keys(unknown).length, "job")} in the HH2 exports ${Object.keys(unknown).length > 1 ? "are" : "is"} not set up</b>, so their hours are held. Add the ones that are yours; leave the rest.
-          <table>${Object.values(unknown).sort((a, b) => b.hours - a.hours).map((u) => html`<tr><td class="mono">${u.job_number}</td><td>${u.job_name || ""}</td><td class="num">${hours(u.hours)} h</td><td><button class="addjob" data-job="${u.job_number}" data-name="${u.job_name || ""}">Add</button></td></tr>`)}</table></div>` : ""}
-        ${edit ? html`<form id="addjob" class="inline"><label>Job #<input name="job_number" required pattern="\\d{2}-\\d{2}-\\d{6}" placeholder="50-60-225121"></label><label>Short name<input name="short_name" required placeholder="DC4"></label><label>Name<input name="name" placeholder="CDR1 East DC4"></label><label>Campus<input name="campus" placeholder="CDR E1"></label><label>Region<input name="region" placeholder="Cedar Rapids, IA"></label><label>Rate table<select name="rate_table_code">${tableOpts("")}</select></label><button class="primary">Add job</button></form>` : ""}`;
+          <table>${Object.values(unknown).sort((a, b) => b.hours - a.hours).map((u) => html`<tr><td class="mono">${u.job_number}</td><td>${u.job_name || ""}</td><td class="num">${hours(u.hours)} h</td><td><button class="addjob" data-job="${u.job_number}" data-name="${u.job_name || ""}">Add</button></td></tr>`)}</table></div>` : ""}`;
     } else if (tab === "vendors") {
       body = html`<p class="muted small">Rental vendors. Tax and markup are the job's (its site); here is only whether a vendor's rentals are taxed at all, and whether its lines are Liberty-owned equipment (rent only, no markup).</p>
         <table><tr><th>Vendor</th><th>Key</th><th>Taxed</th><th>Liberty-owned</th><th>Layout</th>${edit ? html`<th></th>` : ""}</tr>
@@ -796,9 +730,9 @@
     const on = (sel, ev, fn) => $$(sel).forEach((el) => el.addEventListener(ev, fn));
     const f = (id) => $("#" + id);
     const bp = (v) => Math.round(+v * 100);
-    if (f("addjob")) f("addjob").addEventListener("submit", async (ev) => { ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target)); try { await st.db.insert("jobs", { job_number: d.job_number.trim(), short_name: d.short_name.trim(), name: d.name.trim() || null, campus: d.campus.trim() || null, region: d.region.trim() || null, rate_table_code: d.rate_table_code || null }); reload("Job added."); } catch (e) { toast(e.message); } });
+    if (f("addjob")) f("addjob").addEventListener("submit", async (ev) => { ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target)); const campus = root.JobsSettings.campusCode(d.campus) || null; try { await st.db.insert("jobs", { job_number: d.job_number.trim(), short_name: d.short_name.trim(), name: d.name.trim() || null, campus, region: d.region.trim() || null, rate_table_code: d.rate_table_code || null }); location.hash = `#/settings?tab=jobs&job=${encodeURIComponent(d.job_number.trim())}`; reload("Job added."); } catch (e) { toast(e.message); } });
     on("button.addjob", "click", async (ev) => { const b = ev.currentTarget; try { await st.db.insert("jobs", { job_number: b.dataset.job, short_name: (b.dataset.name || b.dataset.job).split(" ").slice(-1)[0], name: b.dataset.name || null, rate_table_code: L.tableForJob(b.dataset.job, st.settings.tables.map((t) => t.code)) }); reload("Job added; set its rate table so its hours price."); } catch (e) { toast(e.message); } });
-    on("form.job", "submit", async (ev) => { ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target)); try { await st.db.update("jobs", { job_number: ev.target.dataset.n }, { short_name: d.short_name.trim(), campus: d.campus.trim() || null, region: d.region.trim() || null, rate_table_code: d.rate_table_code || null, tax_bp: bp(d.tax), markup_bp: bp(d.markup), markup_base: d.markup_base }); reload("Job saved."); } catch (e) { toast(e.message); } });
+    on("form.job", "submit", async (ev) => { ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target)); const prev = st.settings.jobByNumber[ev.target.dataset.n] || {}; const campus = (root.JobsSettings.campusCode(d.campus) || null); const next = d.job_number.trim(); try { await st.db.update("jobs", { job_number: ev.target.dataset.n }, { job_number: next, short_name: d.short_name.trim(), name: (d.name || "").trim() || null, campus, region: (d.region || "").trim() || null, rate_table_code: d.rate_table_code || null, tax_bp: prev.tax_bp == null ? 700 : prev.tax_bp, markup_bp: prev.markup_bp == null ? 1000 : prev.markup_bp, markup_base: prev.markup_base || "rent_plus_tax" }); if (next !== ev.target.dataset.n) location.hash = `#/settings?tab=jobs&job=${encodeURIComponent(next)}`; reload("Job saved."); } catch (e) { toast(e.message); } });
     on("form.vendor", "submit", async (ev) => { ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target)); try { await st.db.update("vendors", { vendor_key: ev.target.dataset.key }, { taxable: d.taxable === "true", liberty_owned: d.liberty_owned === "true" }); reload("Vendor saved."); } catch (e) { toast(e.message); } });
     on("select.mapjob", "change", async (ev) => { const s = ev.currentTarget; try { await st.db.mapVendorJob(s.dataset.vendor, s.dataset.ref, s.value || null); st.settings = await loadSettings(); toast(s.value ? `"${s.dataset.ref}" is ${jobName(s.value)} now.` : `"${s.dataset.ref}" is under other jobs.`); } catch (e) { toast(e.message); } });
     if (f("addrate")) f("addrate").addEventListener("submit", async (ev) => { ev.preventDefault(); const d = Object.fromEntries(new FormData(ev.target)); const cents = C.cents(d.rate); if (!cents || cents <= 0) return toast("the rate must be money"); const cls = d.certified_class.trim().toUpperCase(); if (!cls.startsWith("#")) return toast("a certified class starts with #, as Sage writes it (#LAB-J)"); try { await st.db.insert("billable_rates", { rate_table_code: d.rate_table_code, certified_class: cls, pay_id: d.pay_id.trim().toUpperCase(), rate_cents: cents, effective: `[${d.from},${d.to || ""})`, effective_from: d.from, effective_to: d.to || null }); reload("Rate added; held hours with this key price now."); } catch (e) { toast(e.message); } });
@@ -816,54 +750,14 @@
   // ---- wiring ------------------------------------------------------------------------------------------------------
   function wirePortfolio() {
     const m = monthQ(st.route.q);
-    const goHash = (hash) => { if (location.hash === hash) render(); else location.hash = hash; };
-    const clearAll = () => {
-      const rev = reviewState();
-      rev.campuses = null;
-      rev.projects = null;
-      goHash(`#/?m=${m}`);
+    const openCampus = (name) => {
+      const hash = Pages.campusHref(name, m);
+      if (location.hash === hash) render(); else location.hash = hash;
     };
-    const isolateCampus = (name) => {
-      const rev = reviewState();
-      const cur = rev.campuses && rev.campuses.length === 1 ? portfolioCampus(rev.campuses[0]) : "";
-      if (cur.toLowerCase() === String(name).toLowerCase()) clearAll();
-      else {
-        rev.campuses = [reviewCampus(name)];
-        rev.projects = null;
-        goHash(portfolioHref(m, name, ""));
-      }
-    };
-    const isolateProject = (jobNumber) => {
-      const rev = reviewState();
-      const cur = rev.projects && rev.projects.length === 1 ? rev.projects[0] : "";
-      const job = st.settings.jobByNumber[jobNumber];
-      const campus = portfolioCampus(reviewCampus((job && job.campus) || "Other"));
-      if (cur === jobNumber) {
-        rev.projects = null;
-        goHash(portfolioHref(m, campus, ""));
-      } else {
-        rev.projects = [jobNumber];
-        rev.campuses = [reviewCampus(campus)];
-        goHash(portfolioHref(m, campus, jobNumber));
-      }
-    };
-    const openReview = (campusName, jobNumber) => {
-      const rev = reviewState();
-      const job = jobNumber && st.settings.jobByNumber[jobNumber];
-      const campus = campusName || (job && (job.campus || "Other")) || "";
-      rev.campuses = campus ? [reviewCampus(campus)] : null;
-      rev.projects = jobNumber ? [jobNumber] : null;
-      location.hash = reviewHref();
-    };
-    $$(".pf [data-campus]").forEach((el) => {
-      el.addEventListener("click", () => isolateCampus(el.getAttribute("data-campus")));
-      el.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); isolateCampus(el.getAttribute("data-campus")); } });
+    $$(".pf g.pf-dot").forEach((el) => {
+      el.addEventListener("click", () => openCampus(el.getAttribute("data-campus")));
+      el.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openCampus(el.getAttribute("data-campus")); } });
     });
-    $$(".pf [data-dive-campus]").forEach((el) => el.addEventListener("click", (ev) => { ev.stopPropagation(); openReview(el.getAttribute("data-dive-campus"), ""); }));
-    $$(".pf [data-isolate]").forEach((el) => el.addEventListener("click", () => isolateProject(el.getAttribute("data-isolate"))));
-    $$(".pf [data-dive-job]").forEach((el) => el.addEventListener("click", () => openReview("", el.getAttribute("data-dive-job"))));
-    const all = $("#pf-all");
-    if (all) all.addEventListener("click", clearAll);
   }
 
   function wire() {
@@ -871,7 +765,7 @@
     if (!r.page) wirePortfolio();
     if (r.page === "update") wireUpdate();
     if (r.page === "settings") wireSettings();
-    if (r.page === "review") wireReview();
+    if (r.page === "p") wireReview();
     const x = $("#xlsx"); if (x) x.addEventListener("click", () => exportJob(r.parts[1], monthQ(r.q)).catch((e) => toast(e.message)));
     const bk = $("#buckets"); if (bk) bk.addEventListener("click", () => exportBuckets(monthQ(r.q)).catch((e) => toast(e.message)));
     $$("form.confirm").forEach((f) => f.addEventListener("submit", async (ev) => {

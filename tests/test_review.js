@@ -109,12 +109,33 @@ check("the page is the three-tab review, and an empty workspace still renders", 
   ok(page.includes("GR Weekly Cost Review"), "title");
   ok(page.includes("Weekly Labor Burn") && page.includes("Weekly Rental Burn") && page.includes("Weekly Committed POs"), "tabs");
   const rental = Rev.html(Object.assign({}, m, { tab: "rental" }));
-  ok(rental.includes("Week Ending does not apply"), "rental tab says the week slicer does not apply");
+  ok(rental.includes("Week Ending selection does not apply"), "rental tab says the week slicer does not apply");
   ok(rental.includes("monthly ÷ 4.3"), "weekly is monthly divided by 4.3");
   const po = Rev.html(Object.assign({}, m, { tab: "po" }));
   ok(po.includes("not yet valued in Sage"), "pending copy");
-  ok(page.includes('id="wcr-labor-cost">$0.00'), "empty labor is zero, not blank");
+  ok(page.includes('id="kpiLaborCost">$0.00'), "empty labor is zero, not blank");
+  ok(page.includes("Sage committed values post after PO issuance"), "the committed note is the copied dashboard");
+  ok(page.includes("Prepared by Shane Durbin, Liberty Builds"), "the footer is the copied dashboard");
+  ok(page.includes("On-rent snapshot as of"), "the rental note is the copied dashboard");
+  ok(page.includes('class="grid g-labor"'), "labor uses the dashboard grid");
   eq(m.week, "2026-09-20");
+  ok(!page.includes("Select all"), "no select-all control");
+  ok(!/data-project|data-only-project|type="checkbox"/.test(page), "no project checkbox list");
+  ok(!page.includes(">only<"), "no only links");
+  const one = Rev.build({ jobs, today: "2026-10-02", week: "2026-09-20", projects: ["50-60-225121"] });
+  const onePage = Rev.html(one);
+  ok(onePage.includes("CDR E1 > DC4"), "one project is labeled Campus > Project");
+  ok(!onePage.includes("Select all") && !/type="checkbox"/.test(onePage), "one project still has no checkbox list");
+});
+
+check("week ending 9/20/26 is the default when that week is in the data", () => {
+  const labor = [
+    laborRow({}),
+    laborRow({ week_ending: "2026-09-27", employee_key: "FB9001", employee: "Later", hours: 1, cost_cents: 1 }),
+  ];
+  eq(Rev.build({ jobs, labor, today: "2026-10-02" }).week, "2026-09-20");
+  eq(Rev.build({ jobs, labor: [laborRow({ week_ending: "2026-09-27" })], today: "2026-10-02" }).week, "2026-09-27");
+  eq(Rev.build({ jobs, labor, week: "2026-09-27", today: "2026-10-02" }).week, "2026-09-27");
 });
 
 done();

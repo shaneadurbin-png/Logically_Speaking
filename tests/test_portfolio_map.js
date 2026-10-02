@@ -6,6 +6,7 @@ const fs = require("fs"), path = require("path");
 const { check, eq, ok, done } = require("./lib.js");
 const PM = require("../app/portfolio_map.js");
 const Rev = require("../app/review.js");
+const Pages = require("../app/pages.js");
 
 const EXPECT = {
   "CDR E1": "Iowa", CDR: "Iowa", BWI: "Maryland", PHL: "Pennsylvania", SBN: "Indiana",
@@ -112,6 +113,61 @@ check("a campus filter and a project filter each change the month totals and the
   ok(byProject.po.rows.length === 1 && byProject.po.rows[0].po === "PO-B", "project filter keeps only that job's POs");
   ok(byCampus.po.rows.length === 1 && byCampus.po.rows[0].po === "PO-A", "campus filter keeps only that campus's POs");
   ok(byCampus.labor.cost !== whole.labor.cost && byProject.labor.cost !== whole.labor.cost, "each filter changes the review");
+});
+
+check("the portfolio campuses are PHL, SBN, IAD, PDX, DFW, LCK, CMH, CDR, AUS, BWI", () => {
+  eq(PM.CAMPUS_ORDER, ["PHL", "SBN", "IAD", "PDX", "DFW", "LCK", "CMH", "CDR", "AUS", "BWI"]);
+  eq(PM.canonicalCampus("CDR E1"), "CDR");
+  eq(PM.canonicalCampus("cdr e1"), "CDR");
+  eq(PM.canonicalCampus("DFW2"), "DFW");
+  eq(PM.canonicalCampus("Austin"), "AUS");
+  eq(PM.canonicalCampus("Dallas"), "DFW");
+  eq(PM.canonicalCampus("Dallas-Fort Worth"), "DFW");
+  eq(PM.canonicalCampus("Philadelphia"), "PHL");
+  eq(PM.canonicalCampus("Other"), null);
+  eq(PM.canonicalCampus("Temple"), null);
+  eq(PM.canonicalCampus(""), null);
+  eq(PM.locate("AUS").place, "Austin, TX");
+  eq(PM.locate("AUS").state, "Texas");
+  const jobs = [
+    { job_number: "cdr", campus: "CDR E1" },
+    { job_number: "aus-name", campus: "Austin" },
+    { job_number: "aus", campus: "AUS" },
+    { job_number: "dfw-name", campus: "Dallas" },
+    { job_number: "dfw2", campus: "DFW2" },
+    { job_number: "dfw", campus: "DFW" },
+    { job_number: "phl", campus: "PHL" },
+    { job_number: "sbn", campus: "SBN" },
+    { job_number: "iad", campus: "IAD" },
+    { job_number: "pdx", campus: "PDX" },
+    { job_number: "lck", campus: "LCK" },
+    { job_number: "cmh", campus: "CMH" },
+    { job_number: "bwi", campus: "BWI" },
+    { job_number: "blank", campus: "" },
+    { job_number: "temple", campus: "Temple" },
+  ];
+  const grouped = PM.portfolioCampuses(jobs);
+  eq(grouped.order, ["PHL", "SBN", "IAD", "PDX", "DFW", "LCK", "CMH", "CDR", "AUS", "BWI"]);
+  eq(grouped.groups.CDR.map((j) => j.job_number), ["cdr"]);
+  eq(grouped.groups.AUS.map((j) => j.job_number), ["aus-name", "aus"]);
+  eq(grouped.groups.DFW.map((j) => j.job_number), ["dfw-name", "dfw2", "dfw"]);
+  eq(grouped.groups.PHL.map((j) => j.job_number), ["phl"]);
+  eq(grouped.loose.map((j) => j.job_number), ["blank", "temple"]);
+  ok(!grouped.order.includes("Other") && !grouped.order.includes("CDR E1") && !grouped.order.includes("DFW2"), "no eleventh campus");
+  const expanded = PM.expandCampuses(jobs, ["CDR", "DFW"]);
+  ok(expanded.includes("CDR E1") && expanded.includes("DFW2") && expanded.includes("Dallas") && expanded.includes("DFW"), expanded.join(","));
+  ok(!expanded.includes("AUS") && !expanded.includes(""), "other campuses stay out");
+  const points = grouped.order.map((code) => {
+    const place = PM.locate(code);
+    return { id: code, name: code, lon: place.lon, lat: place.lat };
+  });
+  const svg = PM.svg({ points });
+  const ids = [];
+  svg.replace(/data-campus="([^"]+)"/g, (_, id) => { ids.push(id); return _; });
+  eq(ids, ["PHL", "SBN", "IAD", "PDX", "DFW", "LCK", "CMH", "CDR", "AUS", "BWI"]);
+  const at = (id) => { const m = svg.match(new RegExp(`data-campus="${id}"[\\s\\S]*?class="pf-dot-mark" cx="([\\d.-]+)" cy="([\\d.-]+)"`)); return [+m[1], +m[2]]; };
+  const gap = at("CMH").map((n, i) => n - at("LCK")[i]);
+  ok(Math.hypot(gap[0], gap[1]) >= 12, "LCK is offset from CMH so both dots show");
 });
 
 check("a campus and a project read Campus > Project", () => {

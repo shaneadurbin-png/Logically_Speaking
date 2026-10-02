@@ -7,8 +7,9 @@
    data so the page does not reproject on every paint; tests/test_portfolio_map.js
    rebuilds it from the GeoJSON and checks the two still match.
 
-   Campus dots are keyed by the job's campus code, case-insensitively.
-   A code with no entry still belongs in the campus list; it just has no dot. */
+   The portfolio list and its dots are the ten airport codes in CAMPUS_ORDER.
+   A longer label that clearly names one of them (CDR E1, DFW2, Austin, Dallas)
+   is that code. Anything else is not a campus and gets no row and no dot. */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
   else root.PortfolioMap = factory();
@@ -18,27 +19,111 @@
   const RAD = Math.PI / 180;
   const EPS = 1e-6;
 
-  // Where each campus code sits. place is the fallback region label; state
-  // is the outline to tint when that campus is selected.
-  const PLACES = {
-    "CDR E1": { lon: -91.67, lat: 41.98, place: "Cedar Rapids, IA", state: "Iowa" },
-    "CDR": { lon: -91.67, lat: 41.98, place: "Cedar Rapids, IA", state: "Iowa" },
-    "BWI": { lon: -76.67, lat: 39.18, place: "Baltimore, MD", state: "Maryland" },
-    "PHL": { lon: -75.24, lat: 39.87, place: "Philadelphia, PA", state: "Pennsylvania" },
-    "SBN": { lon: -86.32, lat: 41.71, place: "South Bend, IN", state: "Indiana" },
-    "DFW2": { lon: -97.04, lat: 32.90, place: "Dallas-Fort Worth, TX", state: "Texas" },
-    "DFW": { lon: -97.04, lat: 32.90, place: "Dallas-Fort Worth, TX", state: "Texas" },
-    "AUS": { lon: -97.34, lat: 31.10, place: "Temple, TX", state: "Texas" },
-    "IAD": { lon: -77.46, lat: 38.95, place: "Dulles, VA", state: "Virginia" },
-    "PDX": { lon: -122.60, lat: 45.59, place: "Portland, OR", state: "Oregon" },
-    "CMH": { lon: -82.89, lat: 39.99, place: "Columbus, OH", state: "Ohio" },
-    "LCK": { lon: -82.93, lat: 39.81, place: "Columbus, OH", state: "Ohio" },
+  // Portfolio order. The sidebar and the map both follow this, not cost.
+  const CAMPUS_ORDER = ["PHL", "SBN", "IAD", "PDX", "DFW", "LCK", "CMH", "CDR", "AUS", "BWI"];
+
+  // Longer labels that clearly name one code. Columbus is not here: CMH and LCK share that city.
+  const ALIAS = {
+    "CDR E1": "CDR",
+    "CDRE1": "CDR",
+    "DFW2": "DFW",
+    "AUSTIN": "AUS",
+    "DALLAS": "DFW",
+    "DALLAS-FORT WORTH": "DFW",
+    "DALLAS FORT WORTH": "DFW",
+    "PHILADELPHIA": "PHL",
+    "SOUTH BEND": "SBN",
+    "DULLES": "IAD",
+    "PORTLAND": "PDX",
+    "RICKENBACKER": "LCK",
+    "JOHN GLENN": "CMH",
+    "CEDAR RAPIDS": "CDR",
+    "BALTIMORE": "BWI",
   };
 
+  // Airport area for each code. place is the fallback region; state is the outline
+  // tinted when that campus is selected. LCK is Rickenbacker, just south of CMH
+  // (John Glenn). draw shifts the mark a few pixels so the two Columbus dots
+  // do not land on the same point; the coordinates stay on the airport.
+  const PLACES = {
+    PHL: { lon: -75.24, lat: 39.87, place: "Philadelphia, PA", state: "Pennsylvania" },
+    SBN: { lon: -86.32, lat: 41.71, place: "South Bend, IN", state: "Indiana" },
+    IAD: { lon: -77.46, lat: 38.95, place: "Dulles, VA", state: "Virginia" },
+    PDX: { lon: -122.60, lat: 45.59, place: "Portland, OR", state: "Oregon" },
+    DFW: { lon: -97.04, lat: 32.90, place: "Dallas-Fort Worth, TX", state: "Texas" },
+    LCK: { lon: -82.93, lat: 39.81, place: "Columbus, OH", state: "Ohio", draw: [6, 10] },
+    CMH: { lon: -82.89, lat: 39.99, place: "Columbus, OH", state: "Ohio" },
+    CDR: { lon: -91.71, lat: 41.88, place: "Cedar Rapids, IA", state: "Iowa" },
+    AUS: { lon: -97.67, lat: 30.19, place: "Austin, TX", state: "Texas" },
+    BWI: { lon: -76.67, lat: 39.18, place: "Baltimore, MD", state: "Maryland" },
+  };
+
+  function hasWord(hay, needle) {
+    let from = 0;
+    while (from <= hay.length - needle.length) {
+      const i = hay.indexOf(needle, from);
+      if (i < 0) return false;
+      const before = i === 0 ? "" : hay.charAt(i - 1);
+      const after = hay.charAt(i + needle.length);
+      const edge = (ch) => !ch || !/[A-Z0-9]/.test(ch);
+      if (edge(before) && edge(after)) return true;
+      from = i + needle.length;
+    }
+    return false;
+  }
+
+  /** One of the ten codes, or null when the label is not a campus. */
+  function canonicalCampus(label) {
+    const raw = String(label == null ? "" : label).trim();
+    if (!raw) return null;
+    const k = raw.toUpperCase().replace(/\s+/g, " ");
+    if (k === "OTHER" || k === "UNASSIGNED" || k === "(NONE)") return null;
+    if (CAMPUS_ORDER.indexOf(k) >= 0) return k;
+    if (ALIAS[k]) return ALIAS[k];
+    const head = (k.split(/[^A-Z0-9]+/).filter(Boolean)[0]) || "";
+    if (ALIAS[head]) return ALIAS[head];
+    if (CAMPUS_ORDER.indexOf(head) >= 0) return head;
+    const names = Object.keys(ALIAS).sort((a, b) => b.length - a.length);
+    for (let i = 0; i < names.length; i++) if (hasWord(k, names[i])) return ALIAS[names[i]];
+    return null;
+  }
+
   function locate(code) {
-    const k = String(code == null ? "" : code).trim().toUpperCase();
-    if (!k || k === "OTHER") return null;
-    return PLACES[k] || null;
+    const canon = canonicalCampus(code);
+    return canon ? PLACES[canon] : null;
+  }
+
+  /** Jobs under the ten campuses, in CAMPUS_ORDER. loose is everything else, with no row of its own. */
+  function portfolioCampuses(jobs) {
+    const groups = {};
+    for (let i = 0; i < CAMPUS_ORDER.length; i++) groups[CAMPUS_ORDER[i]] = [];
+    const loose = [];
+    for (const j of jobs || []) {
+      const code = canonicalCampus(j && j.campus);
+      if (code) groups[code].push(j);
+      else loose.push(j);
+    }
+    return { order: CAMPUS_ORDER.slice(), groups, loose };
+  }
+
+  /** Review filters match the stored campus string. A selected code also covers its aliases. */
+  function expandCampuses(jobs, selected) {
+    if (selected == null) return null;
+    const codes = new Set();
+    const rawWanted = new Set();
+    for (const s of selected) {
+      const code = canonicalCampus(s);
+      if (code) codes.add(code);
+      const name = String(s == null ? "" : s).trim();
+      if (name) rawWanted.add(name);
+    }
+    const out = new Set(rawWanted);
+    for (const j of jobs || []) {
+      const stored = j.campus || "Unassigned";
+      const code = canonicalCampus(j.campus);
+      if ((code && codes.has(code)) || rawWanted.has(stored)) out.add(stored);
+    }
+    return [...out];
   }
 
   function conicEqualArea(phi1deg, phi2deg) {
@@ -282,7 +367,10 @@
       if (p.lon == null || p.lat == null) continue;
       const xy = project(p.lon, p.lat);
       if (!xy) continue;
-      dots.push({ id: p.id != null ? p.id : p.name, name: p.name || p.id || "", x: xy[0], y: xy[1], hasCost: !!p.hasCost, selected: !!p.selected });
+      const id = p.id != null ? p.id : p.name;
+      const spec = PLACES[String(id == null ? "" : id).trim().toUpperCase()];
+      if (spec && spec.draw) { xy[0] += spec.draw[0]; xy[1] += spec.draw[1]; }
+      dots.push({ id: id, name: p.name || p.id || "", x: xy[0], y: xy[1], hasCost: !!p.hasCost, selected: !!p.selected });
     }
     separate(dots);
     placeLabels(dots, map.viewBox);
@@ -330,5 +418,5 @@
     return t;
   }
 
-  return { PLACES, locate, project, compile, svg, monthScope, selectionLabel, map: () => MAP };
+  return { PLACES, CAMPUS_ORDER, canonicalCampus, portfolioCampuses, expandCampuses, locate, project, compile, svg, monthScope, selectionLabel, map: () => MAP };
 }));

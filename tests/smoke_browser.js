@@ -31,18 +31,18 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   await page.goto(`${BASE}/CostTracker.html#/?m=2026-09`);
   await page.waitForSelector("header.top");
   check((await text("header.top")).includes("Demo"), "header says demo mode");
-  check((await page.$$("main .cards .card")).length === 4, "Portfolio shows the 4 demo jobs");
-  check((await text("main")).includes("Nothing recorded"), "Portfolio is empty before any drop");
+  check((await page.$$("main .pf-row")).length === 10, "Portfolio lists the ten campuses");
+  check((await text("main")).includes("Mission Critical"), "portfolio heading");
   await shot("01-portfolio-empty");
 
   await nav("#/review");
-  check((await text(".wcr")).includes("GR Weekly Cost Review"), "weekly review opens on an empty workspace");
-  check((await text("#wcr-labor-cost")) === "$0.00", "empty labor burn is zero");
+  check((await text(".gr-dash")).includes("GR Weekly Cost Review"), "weekly review opens on an empty workspace");
+  check((await text("#kpiLaborCost")) === "$0.00", "empty labor burn is zero");
   check((await page.$$("main .cards .card")).length === 0, "the review is not the portfolio cards");
   await nav("#/review?tab=rental");
-  check((await text(".wcr")).includes("Week Ending does not apply"), "rental tab says the week slicer does not apply");
+  check((await text(".gr-dash")).includes("Week Ending selection does not apply"), "rental tab says the week slicer does not apply");
   await nav("#/review?tab=po");
-  check((await text(".wcr")).includes("Weekly Committed POs"), "committed PO tab opens");
+  check((await text(".gr-dash")).includes("Weekly Committed POs"), "committed PO tab opens");
   await nav("#/?m=2026-09");
 
   // ---- Update: drop every fixture -----------------------------------------------
@@ -100,22 +100,22 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   console.log("    " + tiles.join(" | "));
   check(tiles.length === 4 && !tiles.every((t) => t.endsWith("$0")), "Portfolio tiles carry money");
   check(!(await text("header.top")).includes("HH2 through") && !(await text("header.top")).includes("POs as of") && (await text("header.top")).includes("Portfolio"), "header keeps navigation and omits the report chips");
-  const campuses = await page.$$eval("main h2", (els) => els.map((e) => e.textContent.trim()));
+  const campuses = await page.$$eval("main .pf-row .pf-row-name", (els) => els.map((e) => e.textContent.trim()));
   console.log("    campuses: " + campuses.join(" / "));
-  check(campuses.length >= 1, "jobs are grouped by campus");
+  check(campuses.length === 10, "jobs are grouped by the ten campuses");
   check(!/110\s+110/.test(await text("main")), "a register job is not named twice on the portfolio");
   await shot("04-portfolio");
 
   await nav("#/review");
-  const laborKpi = await text("#wcr-labor-cost");
+  const laborKpi = await text("#kpiLaborCost");
   console.log("    review labor " + laborKpi);
   check(laborKpi && laborKpi !== "$0.00", "weekly review prices the recorded week");
   await shot("04b-review-labor");
   await nav("#/review?tab=rental");
-  check((await text(".wcr")).includes("Weekly Rental Burn"), "rental burn opens after record");
+  check((await text(".gr-dash")).includes("Weekly Rental Burn"), "rental burn opens after record");
   await shot("04c-review-rental");
   await nav("#/review?tab=po");
-  check((await text(".wcr")).includes("Weekly Committed POs"), "committed POs open after record");
+  check((await text(".gr-dash")).includes("Weekly Committed POs"), "committed POs open after record");
   await shot("04d-review-po");
 
   // ---- Job DC4 -------------------------------------------------------------------------

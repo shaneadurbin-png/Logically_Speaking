@@ -1,10 +1,11 @@
 /* review.js - the weekly cost review: labor burn, rental burn, committed POs.
 
-   The page matches the Liberty weekly cost review (campus and project
-   slicers, one week ending, three tabs). Numbers come from the workspace:
-   priced HH2 rows, equipment still on rent, and Purchase Pro POs. A held
-   labor row is not in the burn. A viewer never receives employee names;
-   the caller passes employee: null and this file prints a dash. */
+   The markup is the Liberty dashboard for the week ending 9/20/26: the same
+   sections, class names, and labels. Numbers are the workspace's: priced HH2
+   rows, equipment still on rent, and Purchase Pro POs. When that week is in
+   the data it is the week shown until someone picks another. A held labor row
+   is not in the burn. A viewer never receives employee names; the caller
+   passes employee: null and this file prints a dash. */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory(require("./common.js"), require("./labor_model.js"), require("./rentals_model.js"));
   else root.ReviewModel = factory(root.Common, root.LaborModel, root.RentalsModel);
@@ -12,6 +13,7 @@
   "use strict";
 
   const NAVY = "#081E3E", RED = "#C71F3F";
+  const PRESENTATION_WEEK = "2026-09-20";
   const VENDOR_COLOR = [[/united/i, NAVY], [/sunbelt/i, RED], [/equipment\s*share|equipshare/i, "#9A9A9A"], [/herc/i, "#C9C9C9"]];
   const EXTRA = ["#6F7C8E", "#4C6A92", "#8C5A6B", "#5E7A6A"];
 
@@ -33,6 +35,11 @@
     const a = Math.abs(hours || 0), s = hours < 0 ? "-" : "";
     if (a >= 1e3) return s + (a / 1e3).toFixed(2) + "K";
     return s + a.toFixed(2);
+  }
+  function fmt2(n) {
+    const neg = n < 0, a = Math.abs(+n || 0);
+    const parts = a.toFixed(2).split(".");
+    return (neg ? "-" : "") + C.fmtInt(+parts[0]) + "." + parts[1];
   }
   function fmtHrsTable(hours) {
     const neg = hours < 0, a = Math.abs(hours || 0);
@@ -109,7 +116,11 @@
     const jobs = (src.jobs || []).map((j) => Object.assign({}, j, { campus: j.campus || "Unassigned", short_name: j.short_name || j.job_number }));
     const laborWeeks = [...new Set((src.labor || []).map((r) => r.week_ending).filter(Boolean))].sort();
     const poWeeks = [...new Set((src.purchases || []).filter((p) => p.doc_date && !p.cancelled && !p.quote && p.status !== "excluded" && p.order_type !== "Rental").map((p) => L.weekEnding(p.doc_date)))];
-    const week = src.week && /^\d{4}-\d{2}-\d{2}$/.test(src.week) ? L.weekEnding(src.week) : (laborWeeks[laborWeeks.length - 1] || poWeeks.sort().pop() || L.weekEnding(src.today || C.todayIso()));
+    const known = new Set(laborWeeks.concat(poWeeks));
+    let week;
+    if (src.week && /^\d{4}-\d{2}-\d{2}$/.test(src.week)) week = L.weekEnding(src.week);
+    else if (known.has(PRESENTATION_WEEK)) week = PRESENTATION_WEEK;
+    else week = laborWeeks[laborWeeks.length - 1] || [...poWeeks].sort().pop() || L.weekEnding(src.today || C.todayIso());
     const weeks = [...new Set(laborWeeks.concat(poWeeks, [week]))].sort();
     const campuses = [...new Set(jobs.map((j) => j.campus))].sort();
     const campusOn = src.campuses == null ? campuses : campuses.filter((c) => src.campuses.includes(c));
@@ -130,6 +141,8 @@
       projects: inCampus.map((j) => ({ job_number: j.job_number, name: j.short_name, campus: j.campus, on: mask.has(j.job_number) })),
       campusLabel, projectLabel, campusAll: campusOn.length === campuses.length, projectAll: projectOn.length === inCampus.length,
       labor, rental, po,
+      counts: { labor: (src.labor || []).length, rentals: (src.rentals || []).filter((r) => !r.off_rent_date).length },
+      onrentAsOf: src.onrentAsOf || null,
     };
   }
 
@@ -167,7 +180,7 @@
       cost, reg, ot, dt, hours, headcount: seen.size, employees, byCode,
       weeks4: back.map((w, i) => ({ week: w, label: fmtMD(w), carpenter: stack[i].carpenter, laborer: stack[i].laborer })),
       sort: { key: (sort && sort.key) || "employee", dir: (sort && sort.dir) || "asc" },
-      note: `Week ending ${fmtMDY(week)} · ${C.fmtInt(seen.size)} employees · ${fmtHrsTable(hours)} hours`,
+      note: `Week ending ${fmtMDY(week)} · ${C.fmtInt(seen.size)} employees · ${fmt2(hours)} hours`,
     };
   }
 
@@ -231,26 +244,31 @@
   }
   function blank() { return { cents: 0, count: 0, pending: 0 }; }
 
-  function href(model, tab) { return `#/review?tab=${tab}${model.week ? `&w=${model.week}` : ""}`; }
-  function dd(kind, label, items, allOn) {
-    const rows = items.map((it) => kind === "campus"
-      ? `<div class="wcr-dd-item"><label><input type="checkbox" data-campus value="${esc(it.name)}" ${it.on ? "checked" : ""}> <span class="lbl">${esc(it.name)}</span></label><button type="button" class="only" data-only-campus="${esc(it.name)}">only</button></div>`
-      : `<div class="wcr-dd-item"><label><input type="checkbox" data-project value="${esc(it.job_number)}" ${it.on ? "checked" : ""}> <span class="lbl">${esc(it.name)}</span><span class="tag">${esc(it.campus)}</span></label><button type="button" class="only" data-only-project="${esc(it.job_number)}">only</button></div>`).join("");
-    const allAttr = kind === "campus" ? "data-campus-all" : "data-project-all";
-    return `<div class="wcr-dd" data-dd="${kind}"><button type="button" class="wcr-dd-btn" aria-haspopup="listbox"><span class="val">${esc(label)}</span><span class="caret"></span></button><div class="wcr-dd-pop" role="listbox"><label class="wcr-dd-item all"><input type="checkbox" ${allAttr} ${allOn ? "checked" : ""}> Select all</label>${rows || `<div class="wcr-empty">None</div>`}</div></div>`;
+  function href(model, tab) {
+    const key = tab === "committed" ? "po" : tab;
+    return `#/review?tab=${key}${model.week ? `&w=${model.week}` : ""}`;
   }
-  function si(sort, key) { return sort.key === key ? `<i class="si ${sort.dir}"></i>` : `<i class="si"></i>`; }
-  function th(tab, key, label, num, width, sort, firstDir) {
-    return `<th class="${num ? "num" : ""}" style="width:${width}" data-sort="${tab}:${key}" data-sortdir="${firstDir || (num ? "desc" : "asc")}">${esc(label)}${si(sort, key)}</th>`;
+  /** Campus > Project when the review is one job. No picker. */
+  function scopeLabel(m) {
+    const onP = (m.projects || []).filter((p) => p.on);
+    if (onP.length !== 1) return "";
+    const campus = onP[0].campus || "";
+    if (campus && campus !== "Unassigned" && campus !== "Other") return `${campus} > ${onP[0].name}`;
+    return onP[0].name;
+  }
+  function si(sort, key) { return sort.key === key ? `<span class="si ${sort.dir}"></span>` : ""; }
+  function th(tab, key, label, num, width, sort) {
+    return `<th class="${num ? "num" : ""}" data-sort="${tab}:${key}" title="Sort by ${esc(label)}">${esc(label)}${si(sort, key)}</th>`;
   }
   function table(tab, cols, rows, total, sort, cls, height) {
-    const body = rows.length ? rows.map((r) => `<tr>${cols.map((c) => `<td class="${c.num ? "num" : ""}">${c.cell(r)}</td>`).join("")}</tr>`).join("") : `<tr><td class="wcr-empty" colspan="${cols.length}">Nothing for this selection</td></tr>`;
+    const body = rows.length ? rows.map((r) => `<tr>${cols.map((c) => `<td class="${c.num ? "num" : ""}" title="${esc(String(c.title ? c.title(r) : "").replace(/<[^>]+>/g, ""))}">${c.cell(r)}</td>`).join("")}</tr>`).join("") : `<tr><td class="empty" colspan="${cols.length}">No rows for the current selection</td></tr>`;
     const foot = `<tr>${cols.map((c) => `<td class="${c.num ? "num" : ""}">${c.total(total)}</td>`).join("")}</tr>`;
-    return `<div class="wcr-tbl-wrap" style="max-height:${height}px"><table class="wcr-tbl ${cls || ""}"><thead><tr>${cols.map((c) => th(tab, c.key, c.label, c.num, c.width, sort, c.firstDir)).join("")}</tr></thead><tbody>${body}</tbody><tfoot>${foot}</tfoot></table></div>`;
+    const colsHtml = cols.map((c) => `<col style="width:${c.width}">`).join("");
+    return `<div class="tbl-wrap" style="height:${height}px"><table class="tbl ${cls || ""}"><colgroup>${colsHtml}</colgroup><thead><tr>${cols.map((c) => th(tab, c.key, c.label, c.num, c.width, sort)).join("")}</tr></thead><tbody>${body}</tbody><tfoot>${foot}</tfoot></table></div>`;
   }
 
   function hbar(items, fmt) {
-    if (!items.length) return `<div class="wcr-empty">Nothing for this selection</div>`;
+    if (!items.length) return `<div class="empty">Nothing for this selection</div>`;
     const labelW = 168, rowH = 26, gap = 4, valW = 78, w = 520, h = items.length * rowH + 8;
     const max = Math.max(...items.map((i) => i.value), 1);
     const bars = items.map((it, i) => {
@@ -262,7 +280,7 @@
   function truncate(s, n) { s = String(s); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
   function stacked(cats, series, opts) {
     const vals = cats.map((_, i) => series.reduce((a, s) => a + (s.values[i] || 0), 0));
-    if (!vals.some((v) => v)) return `<div class="wcr-empty">${esc(opts.empty || "Nothing for this selection")}</div>`;
+    if (!vals.some((v) => v)) return `<div class="empty">${esc(opts.empty || "Nothing for this selection")}</div>`;
     const W = 560, H = opts.height || 280, padL = 52, padB = opts.sub ? 52 : 36, padT = 18, padR = 8;
     const plotW = W - padL - padR, plotH = H - padT - padB;
     const max = Math.max(...vals, 1), step = niceStep(max, 4), top = Math.max(step, Math.ceil(max / step) * step);
@@ -311,91 +329,130 @@
     return `<svg viewBox="0 0 180 180" role="img">${paths}<text x="90" y="86" text-anchor="middle" font-size="11" fill="#5A5A5A">Monthly</text><text x="90" y="104" text-anchor="middle" font-size="13" font-weight="600" fill="#081E3E">${esc(center)}</text></svg>`;
   }
 
+  function onClass(m, page) {
+    const on = page === "committed" ? m.tab === "po" : m.tab === page;
+    return on ? "page active" : "page";
+  }
   function laborHtml(m) {
     const Lr = m.labor;
-    const names = m.showNames ? "" : `<p class="wcr-note-line">Employee names are hidden on this sign-in.</p>`;
+    const names = m.showNames ? "" : `<p class="note-line">Employee names are hidden on this sign-in.</p>`;
     const emp = table("labor", [
       { key: "employee", label: "Employee", width: "40%", cell: (r) => esc(r.employee), total: () => "Total" },
       { key: "trade", label: "Trade", width: "22%", cell: (r) => esc(r.trade), total: () => "" },
-      { key: "hours", label: "Hours", num: true, width: "17%", cell: (r) => fmtHrsTable(r.hours), total: () => fmtHrsTable(Lr.hours) },
+      { key: "hours", label: "Hours", num: true, width: "17%", cell: (r) => fmt2(r.hours), total: () => fmt2(Lr.hours) },
       { key: "cost", label: "Total Labor Cost", num: true, width: "21%", cell: (r) => fmt2c(r.cost), total: () => fmt2c(Lr.cost) },
     ], Lr.employees, {}, Lr.sort, "tot-red", 392);
     const hours = stacked(Lr.weeks4, [
       { name: "Carpenter", color: RED, values: Lr.weeks4.map((w) => w.carpenter) },
       { name: "Laborer", color: NAVY, values: Lr.weeks4.map((w) => w.laborer) },
-    ], { height: 300, tick: (v) => fmtTick(v), seg: (v) => fmtHrs(v), tot: (v) => fmtHrs(v), empty: "No carpenter or laborer hours in these four weeks" });
-    return `<section class="wcr-page active" data-page="labor"><div class="wcr-ph"><h2>Weekly Labor Burn</h2><span class="note">${esc(Lr.note)}</span></div>${names}
-      <div class="wcr-grid wcr-g-labor"><div class="wcr-stack">
-        <div class="wcr-kpi big"><div class="v" id="wcr-labor-cost">${fmtCur(Lr.cost)}</div><div class="l">Total Labor Cost</div></div>
-        <div class="wcr-kpis wcr-k4">
-          <div class="wcr-kpi small"><div class="v">${fmtHrs(Lr.reg)}</div><div class="l">REG Hours</div></div>
-          <div class="wcr-kpi small"><div class="v">${fmtHrs(Lr.ot)}</div><div class="l">OT Hours</div></div>
-          <div class="wcr-kpi small"><div class="v">${fmtHrs(Lr.dt)}</div><div class="l">DT Hours</div></div>
-          <div class="wcr-kpi small"><div class="v">${C.fmtInt(Lr.headcount)}</div><div class="l">Headcount</div></div>
-        </div></div>
-        <div class="wcr-card"><h3>Total Labor Cost by Cost Code Name<span class="cap">top 12, selected week</span></h3><div class="wcr-chart">${hbar(Lr.byCode.map((c) => ({ label: c.label, value: c.cents })), fmtCur)}</div></div>
-        <div class="wcr-card"><h3>Labor by Employee<span class="cap">week ending ${esc(fmtMDY(m.week))}</span></h3>${emp}</div>
-        <div class="wcr-card"><h3>Hours Total - Last Four Weeks</h3><div class="wcr-legend"><span class="lt">Trade</span><span><span class="sw" style="background:${RED}"></span>Carpenter</span><span><span class="sw" style="background:${NAVY}"></span>Laborer</span></div><div class="wcr-chart">${hours}</div></div>
-      </div></section>`;
+    ], { height: 392, tick: (v) => fmtTick(v), seg: (v) => fmtHrs(v), tot: (v) => fmtHrs(v), empty: "No carpenter or laborer hours in these four weeks" });
+    return `<section class="${onClass(m, "labor")}" id="page-labor" data-page="labor">
+      <div class="ph"><h2>Weekly Labor Burn</h2><span class="note" id="laborNote">${esc(Lr.note)}</span></div>${names}
+      <div class="grid g-labor">
+        <div class="stack">
+          <div class="kpi big"><div class="v" id="kpiLaborCost">${fmtCur(Lr.cost)}</div><div class="l">Total Labor Cost</div></div>
+          <div class="kpis k4">
+            <div class="kpi small"><div class="v" id="kpiReg">${fmtHrs(Lr.reg)}</div><div class="l">REG Hours</div></div>
+            <div class="kpi small"><div class="v" id="kpiOt">${fmtHrs(Lr.ot)}</div><div class="l">OT Hours</div></div>
+            <div class="kpi small"><div class="v" id="kpiDt">${fmtHrs(Lr.dt)}</div><div class="l">DT Hours</div></div>
+            <div class="kpi small"><div class="v" id="kpiHead">${C.fmtInt(Lr.headcount)}</div><div class="l">Headcount</div></div>
+          </div>
+        </div>
+        <div class="card"><h3>Total Labor Cost by Cost Code Name<span class="cap">top 12, selected week</span></h3><div class="chart" id="chCostCode">${hbar(Lr.byCode.map((c) => ({ label: c.label, value: c.cents })), fmtCur)}</div></div>
+        <div class="card"><h3>Labor by Employee<span class="cap" id="laborTblCap">week ending ${esc(fmtMDY(m.week))}</span></h3><div id="tblLabor">${emp}</div></div>
+        <div class="card"><h3>Hours Total - Last Four Weeks</h3><div class="legend"><span class="lt">Trade</span><span><span class="sw" style="background:${RED}"></span>Carpenter</span><span><span class="sw" style="background:${NAVY}"></span>Laborer</span></div><div class="chart" id="chHours4">${hours}</div></div>
+      </div>
+    </section>`;
   }
   function rentalHtml(m) {
     const Rr = m.rental;
+    const asOf = fmtMDY(m.onrentAsOf || m.updated || m.today);
     const tbl = table("rental", [
       { key: "description", label: "Description", width: "52%", cell: (r) => esc(r.description), total: () => "Total" },
       { key: "qty", label: "Quantity", num: true, width: "13%", cell: (r) => C.fmtInt(r.qty), total: () => C.fmtInt(Rr.qty) },
       { key: "monthly", label: "Monthly", num: true, width: "18%", cell: (r) => fmt2c(r.monthly), total: () => fmt2c(Rr.monthly) },
       { key: "weekly", label: "Weekly", num: true, width: "17%", cell: (r) => fmt2c(r.weekly), total: () => fmt2c(Rr.weekly) },
-    ], Rr.descriptions, {}, Rr.sort, "", 560);
-    const leg = Rr.vendors.length ? `<div class="lt">Vendor</div><table><tbody>${Rr.vendors.map((v) => `<tr><td><span class="sw" style="background:${v.color}"></span>${esc(v.label)}</td><td class="num">${fmtCur(v.cents)}</td><td class="pct">${Rr.monthly ? (v.cents / Rr.monthly * 100).toFixed(1) : "0.0"}%</td></tr>`).join("")}<tr class="tot"><td>Total</td><td class="num">${fmtCur(Rr.monthly)}</td><td class="pct">100%</td></tr></tbody></table>` : `<div class="wcr-empty">No equipment on rent for the current selection</div>`;
-    return `<section class="wcr-page active" data-page="rental"><div class="wcr-ph"><h2>Weekly Rental Burn</h2><span class="note">Equipment still on rent. Week Ending does not apply to this page.</span></div>
-      <div class="wcr-grid wcr-g-rent">
-        <div class="wcr-kpis wcr-k3 c1">
-          <div class="wcr-kpi band"><div class="bh">Monthly Cost</div><div class="bv"><div class="v" id="wcr-rent-monthly">${fmtCur(Rr.monthly)}</div></div><div class="s">burdened monthly rate, all lines</div></div>
-          <div class="wcr-kpi band"><div class="bh">Weekly Cost</div><div class="bv"><div class="v">${fmtCur(Rr.weekly)}</div></div><div class="s">monthly ÷ 4.3</div></div>
-          <div class="wcr-kpi band"><div class="bh">Items On Rent</div><div class="bv"><div class="v">${C.fmtInt(Rr.qty)}</div></div><div class="s"><b>${C.fmtInt(Rr.qty)}</b> units on <b>${C.fmtInt(Rr.lines)}</b> rental lines</div></div>
+    ], Rr.descriptions, {}, Rr.sort, "", 642);
+    const leg = Rr.vendors.length ? `<div class="lt">Vendor</div><table><tbody>${Rr.vendors.map((v) => `<tr><td><span class="sw" style="background:${v.color}"></span>${esc(v.label)}</td><td class="num">${fmtCur(v.cents)}</td><td class="pct">${Rr.monthly ? (v.cents / Rr.monthly * 100).toFixed(1) : "0.0"}%</td></tr>`).join("")}<tr class="tot"><td>Total</td><td class="num">${fmtCur(Rr.monthly)}</td><td class="pct">100%</td></tr></tbody></table>` : `<div class="empty">No equipment on rent for the current selection</div>`;
+    return `<section class="${onClass(m, "rental")}" id="page-rental" data-page="rental">
+      <div class="ph"><h2>Weekly Rental Burn</h2><span class="note">On-rent snapshot as of ${esc(asOf)} &middot; Week Ending selection does not apply to this page</span></div>
+      <div class="grid g-rent">
+        <div class="kpis k3 c1">
+          <div class="kpi band"><div class="bh">Monthly Cost</div><div class="bv"><div class="v" id="kpiMonthly">${fmtCur(Rr.monthly)}</div></div><div class="s">burdened monthly rate, all lines</div></div>
+          <div class="kpi band"><div class="bh">Weekly Cost</div><div class="bv"><div class="v" id="kpiWeekly">${fmtCur(Rr.weekly)}</div></div><div class="s">monthly ÷ 4.3</div></div>
+          <div class="kpi band"><div class="bh">Items On Rent</div><div class="bv"><div class="v" id="kpiItems">${C.fmtInt(Rr.qty)}</div></div><div class="s" id="kpiItemsSub"><b>${C.fmtInt(Rr.qty)}</b> units on <b>${C.fmtInt(Rr.lines)}</b> rental lines</div></div>
         </div>
-        <div class="wcr-card c2"><h3>Equipment On Rent<span class="cap">by description, monthly burdened cost</span></h3>${tbl}</div>
-        <div class="wcr-card c1"><h3>Costs by Vendor<span class="cap">monthly burdened cost</span></h3><div class="wcr-donut"><div class="wcr-chart">${donut(Rr.vendors, fmtCur(Rr.monthly))}</div><div class="wcr-dleg">${leg}</div></div></div>
-        <div class="wcr-card c1"><h3>Monthly Cost by Category<span class="cap">top 8</span></h3><div class="wcr-chart">${hbar(Rr.categories.map((c) => ({ label: c.label, value: c.cents })), fmtCur)}</div></div>
-      </div></section>`;
+        <div class="card c2"><h3>Equipment On Rent<span class="cap">by description, monthly burdened cost</span></h3><div id="tblRent">${tbl}</div></div>
+        <div class="card c1"><h3>Costs by Vendor<span class="cap">monthly burdened cost</span></h3><div class="donut-wrap"><div class="chart" id="chVendor">${donut(Rr.vendors, fmtCur(Rr.monthly))}</div><div class="dleg" id="legVendor">${leg}</div></div></div>
+        <div class="card c1"><h3>Monthly Cost by Category<span class="cap">top 8</span></h3><div class="chart" id="chCategory">${hbar(Rr.categories.map((c) => ({ label: c.label, value: c.cents })), fmtCur)}</div></div>
+      </div>
+    </section>`;
   }
-  function band(title, w) {
-    return `<div class="wcr-kpi band"><div class="bh">${title}</div><div class="bv"><div class="v">${fmtCur(w.cents)}</div></div><div class="s"><b>${C.fmtInt(w.count)}</b> PO${w.count === 1 ? "" : "s"} · <b>${C.fmtInt(w.pending)}</b> not yet valued in Sage</div></div>`;
+  function band(id, sub, title, w) {
+    return `<div class="kpi band"><div class="bh">${title}</div><div class="bv"><div class="v" id="${id}">${fmtCur(w.cents)}</div></div><div class="s" id="${sub}"><b>${C.fmtInt(w.count)}</b> PO${w.count === 1 ? "" : "s"} · <b>${C.fmtInt(w.pending)}</b> not yet valued in Sage</div></div>`;
   }
   function poHtml(m) {
     const P = m.po;
+    const pending = P.nAll - P.nValued;
+    const year = m.week.slice(0, 4);
     const tbl = table("po", [
       { key: "date", label: "Order Date", width: "16%", cell: (r) => esc(fmtMDY(r.date)), total: () => "Total (valued)" },
       { key: "po", label: "PO #", width: "15%", cell: (r) => esc(r.po), total: () => "" },
       { key: "job", label: "Job #", width: "19%", cell: (r) => esc(r.job), total: () => "" },
       { key: "supplier", label: "Supplier", width: "30%", cell: (r) => esc(r.supplier), total: () => `${C.fmtInt(P.nValued)} of ${C.fmtInt(P.nAll)} POs` },
-      { key: "committed", label: "Committed Value", num: true, width: "20%", cell: (r) => r.committed == null ? `<span class="pending">pending</span>` : fmt2c(r.committed), total: () => fmt2c(P.valued) },
+      { key: "committed", label: "Committed Value", num: true, width: "20%", cell: (r) => r.committed == null ? `<span class="pending">pending</span>` : fmt2c(r.committed), title: (r) => r.committed == null ? "pending - not yet valued in Sage" : fmt2c(r.committed), total: () => fmt2c(P.valued) },
     ], P.rows, {}, P.sort, "", 470);
     const chart = stacked(P.weeks4.map((w) => ({ label: w.label, sub: `${C.fmtInt(w.count)} PO${w.count === 1 ? "" : "s"}${w.pending ? ` · ${C.fmtInt(w.pending)} pending` : ""}` })),
       [{ name: "Committed", color: NAVY, values: P.weeks4.map((w) => w.cents / 100) }],
-      { height: 320, sub: true, tick: (v) => "$" + fmtTick(v), seg: () => "", tot: (v) => fmtCur(Math.round(v * 100)), empty: "No valued POs in these four weeks" });
-    return `<section class="wcr-page active" data-page="po"><div class="wcr-ph"><h2>Weekly Committed POs</h2><span class="note">${esc(P.note)}</span></div>
-      <div class="wcr-kpis wcr-k4" style="margin-bottom:6px">${band("This Week", P.tw)}${band("Last Week", P.lw)}${band("MTD", P.mtd)}${band("YTD", P.ytd)}</div>
-      <p class="wcr-note-line">Quotes, cancelled orders, rental POs, and POs left out of the count are omitted. A blank committed amount is still pending in Sage.</p>
-      <div class="wcr-grid wcr-g-comm"><div class="wcr-card"><h3>Purchase Orders<span class="cap">${C.fmtInt(P.nAll)} POs · ${C.fmtInt(P.nValued)} valued</span></h3>${tbl}</div>
-        <div class="wcr-card"><h3>Committed Total - Last Four Weeks<span class="cap">week ending = Sunday on or after order date</span></h3><div class="wcr-chart">${chart}</div></div></div></section>`;
+      { height: 470, sub: true, tick: (v) => "$" + fmtTick(v), seg: () => "", tot: (v) => fmtCur(Math.round(v * 100)), empty: "No Sage-valued POs in these four weeks; all POs in the window are still pending valuation" });
+    return `<section class="${onClass(m, "committed")}" id="page-committed" data-page="committed">
+      <div class="ph"><h2>Weekly Committed POs</h2><span class="note" id="commNote">${esc(P.note)}</span></div>
+      <div class="kpis k4" style="margin-bottom:6px">${band("kpiTW", "subTW", "This Week", P.tw)}${band("kpiLW", "subLW", "Last Week", P.lw)}${band("kpiMTD", "subMTD", "MTD", P.mtd)}${band("kpiYTD", "subYTD", "YTD", P.ytd)}</div>
+      <div class="note-line" style="margin-bottom:12px">Sage committed values post after PO issuance. ${C.fmtInt(pending)} POs carry no Sage value yet, so recent windows read low until Sage posts them.</div>
+      <div class="grid g-comm">
+        <div class="card"><h3>Purchase Orders<span class="cap" id="commTblCap">${C.fmtInt(P.nAll)} POs in ${esc(year)} · ${C.fmtInt(P.nValued)} valued in Sage</span></h3><div id="tblComm">${tbl}</div></div>
+        <div class="card"><h3>Committed Total - Last Four Weeks<span class="cap">week ending = Sunday on or after order date</span></h3><div class="chart" id="chComm4">${chart}</div></div>
+      </div>
+    </section>`;
   }
 
   function html(model) {
     const m = model;
-    const updated = m.updated ? `Data through ${fmtMDY(m.updated)} · ` : "";
-    const page = m.tab === "rental" ? rentalHtml(m) : m.tab === "po" ? poHtml(m) : laborHtml(m);
-    const projLabel = m.projectAll ? "All" : (m.projects.filter((p) => p.on).length === 1 ? m.projects.find((p) => p.on).name : `${m.projects.filter((p) => p.on).length} projects`);
-    const campLabel = m.campusAll ? "All" : (m.campuses.filter((c) => c.on).length === 1 ? m.campuses.find((c) => c.on).name : `${m.campuses.filter((c) => c.on).length} campuses`);
-    return `<div class="wcr"><header class="wcr-hdr"><div class="wcr-logo">LIBERTY</div><div class="wcr-titles"><h1>GR Weekly Cost Review</h1><div class="sub">Liberty Builds · General Requirements · ${esc(updated)}Week ending ${esc(fmtMDY(m.week))}</div></div>
-      <nav class="wcr-tabs" aria-label="Report pages"><a class="wcr-tab ${m.tab === "labor" ? "active" : ""}" href="${href(m, "labor")}">Weekly Labor Burn</a><a class="wcr-tab ${m.tab === "rental" ? "active" : ""}" href="${href(m, "rental")}">Weekly Rental Burn</a><a class="wcr-tab ${m.tab === "po" ? "active" : ""}" href="${href(m, "po")}">Weekly Committed POs</a></nav></header>
-      <div class="wcr-slicers"><div class="wcr-sl"><label>Campus, Project Name</label><div class="wcr-sl-row">${dd("campus", campLabel, m.campuses, m.campusAll)}${dd("project", projLabel, m.projects, m.projectAll)}</div></div>
-        <div class="wcr-sl"><label for="wcr-week">Week Ending</label><div class="wcr-sl-row"><select class="wk" id="wcr-week">${m.weeks.map((w) => `<option value="${w}" ${w === m.week ? "selected" : ""}>${esc(fmtMDY(w))}</option>`).join("")}</select></div></div>
-        <div class="wcr-sl"><label>&nbsp;</label><div class="wcr-sl-row"><button class="wcr-btn" id="wcr-clear" type="button">Clear</button></div></div>
-        <div class="wcr-fsum">Campus: <b>${esc(m.campusLabel)}</b> · Project Name: <b>${esc(m.projectLabel)}</b> · Week Ending: <b>${esc(fmtMDY(m.week))}</b></div></div>
-      <div class="wcr-main">${page}</div>
-      <footer class="wcr-foot"><div class="src">Source: GR Cost · HH2 labor, on-rent reports, Purchase Pro · Prepared ${esc(fmtMDY(m.today))}</div><button class="wcr-btn" id="wcr-print" type="button">Print</button></footer></div>`;
+    const updated = fmtMDY(m.updated || m.today);
+    const scope = scopeLabel(m);
+    const weeks = m.weeks.slice().sort().reverse();
+    return `<div class="app gr-dash">
+      <header class="hdr">
+        <img class="logo" id="logo" src="app/liberty-logo.png" alt="Liberty Builds">
+        <div class="titles">
+          <h1>GR Weekly Cost Review</h1>
+          <div class="sub">Liberty Builds &middot; General Requirements &middot; Data updated ${esc(updated)} &middot; Week ending ${esc(fmtMDY(m.week))}</div>
+        </div>
+        <nav class="tabs" id="tabs" aria-label="Report pages">
+          <a class="tab${m.tab === "labor" ? " active" : ""}" data-page="labor" href="${href(m, "labor")}">Weekly Labor Burn</a>
+          <a class="tab${m.tab === "rental" ? " active" : ""}" data-page="rental" href="${href(m, "rental")}">Weekly Rental Burn</a>
+          <a class="tab${m.tab === "po" ? " active" : ""}" data-page="committed" href="${href(m, "committed")}">Weekly Committed POs</a>
+        </nav>
+      </header>
+      <div class="slicers" id="slicers">
+        ${scope ? `<div class="sl"><label>Campus, Project Name</label><div class="sl-row"><span>${esc(scope)}</span></div></div>` : ""}
+        <div class="sl">
+          <label for="selWeek">Week Ending</label>
+          <div class="sl-row"><select class="wk" id="selWeek">${weeks.map((w) => `<option value="${w}" ${w === m.week ? "selected" : ""}>${esc(fmtMDY(w))}</option>`).join("")}</select></div>
+        </div>
+        <div class="fsum" id="fsum">${scope ? `<b>${esc(scope)}</b> · ` : ""}Week Ending: <b>${esc(fmtMDY(m.week))}</b></div>
+      </div>
+      <main>
+        ${laborHtml(m)}
+        ${rentalHtml(m)}
+        ${poHtml(m)}
+      </main>
+      <footer>
+        <div class="src">Source: GR Cost · ${C.fmtInt(m.counts.labor)} labor rows · ${C.fmtInt(m.counts.rentals)} on-rent lines · Prepared by Shane Durbin, Liberty Builds</div>
+        <button class="btn btn-print" id="btnPrint" type="button">Print</button>
+      </footer>
+    </div>`;
   }
 
-  return { build, html, payBucket, weeklyOf, tradeOf, vendorColor, fmtCur, fmtMDY };
+  return { build, html, payBucket, weeklyOf, tradeOf, vendorColor, fmtCur, fmtMDY, PRESENTATION_WEEK };
 }));
