@@ -167,6 +167,7 @@
     const { rows, fresh } = await monthRows(m);
     const tot = PM.monthScope(rows, null);
     return raw(Pages.portfolio({
+      title: "Mission Critical",
       month: m, jobs: st.settings.jobs, rows, laborNote: laborNoteFor(rows, m, fresh),
       pendingLines: tot.pendingLines, canEdit: st.db.canEdit(),
     }));
@@ -447,14 +448,9 @@
     return Rev.html(model);
   }
   async function reviewPage() {
-    const q = st.route.q;
-    const rev = reviewState();
-    if (q.c || q.j) applyReviewQuery(rev, q);
-    const jobs = st.settings.jobs.filter((j) => j.active !== false);
-    return raw(await buildReview({
-      jobs, week: q.w || null, tab: reviewTab(q), sort: rev.sort,
-      campuses: PM.expandCampuses(jobs, rev.campuses), projects: rev.projects,
-    }));
+    const dest = Pages.reviewRedirect(st.route, st.review);
+    if (location.hash !== dest) location.hash = dest;
+    return "";
   }
   function wireReview() {
     const box = $(".gr-dash") || $(".wcr");
@@ -478,7 +474,46 @@
       rev.sort[which] = { key, dir: cur.key === key && cur.dir === "asc" ? "desc" : "asc" };
       render();
     }));
-    const print = $("#btnPrint") || $("#wcr-print");
+    $$(".dd-btn", box).forEach((b) => b.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const dd = b.closest(".dd");
+      if (!dd) return;
+      const open = dd.classList.contains("open");
+      $$(".dd.open").forEach((d) => d.classList.remove("open"));
+      if (!open) dd.classList.add("open");
+    }));
+    if (!st.reviewDoc) {
+      st.reviewDoc = true;
+      document.addEventListener("click", () => $$(".dd.open").forEach((d) => d.classList.remove("open")));
+    }
+    const read = (sel) => $$(sel, box).filter((x) => x.checked).map((x) => x.value);
+    const stay = () => render();
+    $$("[data-campus]", box).forEach((el) => el.addEventListener("change", () => {
+      const all = $$("[data-campus]", box);
+      const checked = read("[data-campus]");
+      rev.campuses = checked.length === all.length ? null : checked;
+      rev.projects = null;
+      stay();
+    }));
+    const campusAll = $("[data-campus-all]", box);
+    if (campusAll) campusAll.addEventListener("change", () => { rev.campuses = campusAll.checked ? null : []; rev.projects = null; stay(); });
+    $$("[data-only-campus]", box).forEach((b) => b.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); rev.campuses = [b.dataset.onlyCampus]; rev.projects = null; stay(); }));
+    $$("[data-project]", box).forEach((el) => el.addEventListener("change", () => {
+      const all = $$("[data-project]", box);
+      const checked = read("[data-project]");
+      rev.projects = checked.length === all.length ? null : checked;
+      stay();
+    }));
+    const projectAll = $("[data-project-all]", box);
+    if (projectAll) projectAll.addEventListener("change", () => { rev.projects = projectAll.checked ? null : []; stay(); });
+    $$("[data-only-project]", box).forEach((b) => b.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); rev.projects = [b.dataset.onlyProject]; stay(); }));
+    const clear = $("#btnClear");
+    if (clear) clear.addEventListener("click", () => {
+      rev.campuses = null; rev.projects = null; rev.week = null;
+      const next = `#/review?tab=${tab}`;
+      if (location.hash === next) render(); else location.hash = next;
+    });
+        const print = $("#btnPrint") || $("#wcr-print");
     if (print) print.addEventListener("click", () => window.print());
   }
 
