@@ -16,7 +16,7 @@
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig, PM = root.PortfolioMap, Pages = root.Pages;
-  const RELEASE = "0.1.16";
+  const RELEASE = "0.1.17";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -57,12 +57,9 @@
       if (!st.db.ws) { mount(app, chooseWorkspaceView()); wireChoose(); return; }
       if (!st.settings) st.settings = await loadSettings();
       const r = st.route;
-      if (r.page === "review") {
-        const dest = Pages.reviewRedirect(r, st.review);
-        if (location.hash !== dest) { location.hash = dest; return; }
-      }
       let body;
-      if (r.page === "c" && r.parts[1]) body = await campusView(decodeURIComponent(r.parts[1]), monthQ(r.q));
+      if (r.page === "review") body = await reviewPage();
+      else if (r.page === "c" && r.parts[1]) body = await campusView(decodeURIComponent(r.parts[1]), monthQ(r.q));
       else if (r.page === "p" && r.parts[1]) body = await projectView(decodeURIComponent(r.parts[1]), monthQ(r.q));
       else if (r.page === "job" && r.parts[1]) body = await jobView(r.parts[1], monthQ(r.q));
       else if (r.page === "report") body = await reportView(r.parts[1] || "all", monthQ(r.q));
@@ -450,10 +447,15 @@
     rev.week = model.week;
     return Rev.html(model);
   }
-  function reviewPage() {
-    const dest = Pages.reviewRedirect(st.route, st.review);
-    if (location.hash !== dest) location.hash = dest;
-    return "";
+  async function reviewPage() {
+    const q = st.route.q;
+    const rev = reviewState();
+    if (q.c || q.j) applyReviewQuery(rev, q);
+    const jobs = st.settings.jobs.filter((j) => j.active !== false);
+    return raw(await buildReview({
+      jobs, week: q.w || null, tab: reviewTab(q), sort: rev.sort,
+      campuses: PM.expandCampuses(jobs, rev.campuses), projects: rev.projects,
+    }));
   }
   function wireReview() {
     const box = $(".gr-dash") || $(".wcr");
