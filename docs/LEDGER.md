@@ -25,6 +25,9 @@ Every decision, with what it was measured against. **L** is settled; **Q** is op
 - **L-19 · Readers run in the page, not on a server.** Same code in the browser and in Node, same tests; the database recounts what the page sends.
 - **L-20 · Public repo, no real data.** Fixtures are generated; real exports, rate sheets, the register and email live only in the session's scratch space.
 
+- **L-21 · A purchase decision is about the PO, not the export.** Every Purchase Pro export recreates every PO, so a decision keyed to one export's row would vanish a week later. `app.purchase_docs_resolved` takes the latest decision on the document or on the same PO number (same source and kind) from any export; the demo adapter does the same. A PO with no committed amount keeps waiting even when assigned a job: nothing is counted at zero.
+- **L-22 · CI runs what a contributor runs.** `npm test`, `tests/db/run.sh` against a `postgres:16` service (the script's `PGURL` mode, validated over TCP locally before it was pushed) and the browser smoke straight from the files, no server.
+
 ## Open
 
 - **Q-01 · Inbox domain** for the CC'd purchases inbox (Phase 2).

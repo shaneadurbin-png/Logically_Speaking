@@ -180,13 +180,20 @@ select d.id, d.workspace_id, d.upload_id, d.source, d.direction, d.vendor_key, d
   coalesce(dd.bucket, cc.bucket, d.bucket) as bucket,
   case when d.cancelled or d.quote then 'excluded'
        when dd.decision = 'exclude' then 'excluded'
-       when dd.decision in ('confirm', 'assign') then 'confirmed'
        when d.total_cents is null then 'needs_decision'
+       when dd.decision in ('confirm', 'assign') then 'confirmed'
        when j.id is null then 'needs_decision'
        else d.status::text end as status,
   (j.id is not null) as job_known
 from app.purchase_docs_live d
-left join lateral (select * from public.purchase_decisions x where x.doc_id = d.id and x.line_id is null order by x.decided_at desc limit 1) dd on true
+-- the latest decision on this document, or on the same PO number from an earlier export:
+-- a Purchase Pro export recreates every PO, and a decision is about the PO, not the export
+left join lateral (
+  select x.* from public.purchase_decisions x
+  join public.purchase_docs xd on xd.id = x.doc_id
+  where x.line_id is null and x.workspace_id = d.workspace_id
+    and (x.doc_id = d.id or (d.doc_kind = 'purchase_order' and xd.doc_kind = 'purchase_order' and xd.source = d.source and xd.doc_number = d.doc_number))
+  order by x.decided_at desc, x.id desc limit 1) dd on true
 left join public.cost_codes cc on cc.workspace_id = d.workspace_id and cc.code = coalesce(dd.cost_code, d.cost_code)
 left join public.jobs j on j.workspace_id = d.workspace_id and j.job_number = coalesce(dd.job_number, d.job_number);
 

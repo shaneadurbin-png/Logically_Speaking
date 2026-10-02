@@ -23,7 +23,7 @@
       rate_tables: JOBS.map(([, , name, code]) => ({ workspace_id: WS, code, description: name + " (Iowa CBA, demo)", source_file: null })),
       billable_rates: [], employees: [], pay_type_policy: L.PTO_PAY_TYPES.map((p) => ({ workspace_id: WS, pay_type_name: p, policy: "held_pto" })),
       members: [{ workspace_id: WS, email: "you@demo", role: "owner", display_name: "Demo editor" }],
-      uploads: [], labor: [], snapshots: [], poExports: [], audit: [],
+      uploads: [], labor: [], snapshots: [], poExports: [], purchase_decisions: [], audit: [],
     };
     for (const t of S.rate_tables) for (const [certified_class, pay_id, rate_cents] of RATES) S.billable_rates.push({ id: uuid(), workspace_id: WS, rate_table_code: t.code, certified_class, pay_id, rate_cents, effective_from: "2026-07-01", effective_to: null, effective: "[2026-07-01,)", retired_at: null, note: "demo" });
 
@@ -50,10 +50,14 @@
       }
       return out;
     };
-    const purchaseDocs = () => { const po = latestPo(); if (!po) return []; return po.pos.map((p) => ({ id: po.upload_id + ":" + p.po_number, workspace_id: WS, upload_id: po.upload_id, source: "drop", direction: "cost", vendor_key: p.supplier_code, vendor_name_raw: p.supplier_name, doc_kind: "purchase_order", doc_number: p.po_number, doc_date: p.order_date, description: p.description, order_type: p.order_type, cancelled: p.cancelled, quote: p.quote, total_cents: p.committed_cents, job_number: p.job_number, cost_code: null, bucket: p.bucket, job_known: jobKnown(p.job_number), status: p.cancelled || p.quote ? "excluded" : p.committed_cents == null || !jobKnown(p.job_number) ? "needs_decision" : "auto" })); };
+    // a decision is about the PO (its number), so it holds through the next export, as in app.purchase_docs_resolved
+    const decisionFor = (po_number) => S.purchase_decisions.filter((x) => x.doc_number === po_number && x.line_id == null).sort((a, b) => (a.decided_at < b.decided_at ? 1 : a.decided_at > b.decided_at ? -1 : b.id - a.id))[0] || null;
+    const purchaseDocs = () => { const po = latestPo(); if (!po) return []; return po.pos.map((p) => { const dd = decisionFor(p.po_number); const job_number = (dd && dd.job_number) || p.job_number, bucket = (dd && dd.bucket) || p.bucket, known = jobKnown(job_number);
+      const status = p.cancelled || p.quote ? "excluded" : dd && dd.decision === "exclude" ? "excluded" : p.committed_cents == null ? "needs_decision" : dd && (dd.decision === "assign" || dd.decision === "confirm") ? "confirmed" : !known ? "needs_decision" : "auto";
+      return { id: po.upload_id + ":" + p.po_number, workspace_id: WS, upload_id: po.upload_id, source: "drop", direction: "cost", vendor_key: p.supplier_code, vendor_name_raw: p.supplier_name, doc_kind: "purchase_order", doc_number: p.po_number, doc_date: p.order_date, description: p.description, order_type: p.order_type, cancelled: p.cancelled, quote: p.quote, total_cents: p.committed_cents, job_number, cost_code: null, bucket, job_known: known, status }; }); };
     const VIEWS = {
       jobs: () => S.jobs, vendors: () => S.vendors, vendor_job_map: () => S.vendor_job_map, rate_tables: () => S.rate_tables, billable_rates: () => S.billable_rates, employees: () => S.employees,
-      pay_type_policy: () => S.pay_type_policy, members: () => S.members, uploads: () => S.uploads, audit_log: () => S.audit, v_uploads_live: live,
+      pay_type_policy: () => S.pay_type_policy, members: () => S.members, uploads: () => S.uploads, audit_log: () => S.audit, purchase_decisions: () => S.purchase_decisions, v_uploads_live: live,
       v_labor_priced: () => priced().map((r) => Object.assign({ workspace_id: WS, hours: r.hours_x100 / 100 }, r)),
       v_labor_job_month: () => { const m = {}; for (const r of priced()) { const k = r.job_number + "|" + C.monthOf(r.work_date); const g = m[k] || (m[k] = { workspace_id: WS, job_number: r.job_number, month: C.monthOf(r.work_date) + "-01", rows_n: 0, hours: 0, priced_hours: 0, cost_cents: 0, held_hours: 0, held_rows: 0, through: null }); g.rows_n++; g.hours += r.hours_x100 / 100; if (r.status === "priced") { g.priced_hours += r.hours_x100 / 100; g.cost_cents += r.cost_cents; } if (r.status.startsWith("held:")) { g.held_hours += r.hours_x100 / 100; g.held_rows++; } if (!g.through || r.work_date > g.through) g.through = r.work_date; } return Object.values(m); },
       v_labor_class_month: () => { const m = {}; for (const r of priced()) { const k = [r.job_number, C.monthOf(r.work_date), r.certified_class, r.pay_type, r.status].join("|"); const g = m[k] || (m[k] = { workspace_id: WS, job_number: r.job_number, month: C.monthOf(r.work_date) + "-01", certified_class: r.certified_class, pay_id: r.pay_type, pay_type_name: r.pay_type_name, status: r.status, rows_n: 0, hours: 0, cost_cents: 0, rate_cents: r.rate_cents }); g.rows_n++; g.hours += r.hours_x100 / 100; g.cost_cents += r.cost_cents || 0; } return Object.values(m); },
@@ -72,7 +76,9 @@
     };
     self.view = async (name, filters = {}, opts = {}) => { if (!VIEWS[name]) throw new Error("no view " + name); let rows = filt(VIEWS[name](), filters); if (opts.range) rows = rows.filter((r) => (opts.range.from == null || r[opts.range.col] >= opts.range.from) && (opts.range.to == null || r[opts.range.col] <= opts.range.to)); if (opts.order) rows = rows.slice().sort((a, b) => (a[opts.order] < b[opts.order] ? -1 : a[opts.order] > b[opts.order] ? 1 : 0) * (opts.ascending === false ? -1 : 1)); if (opts.limit) rows = rows.slice(0, opts.limit); return rows; };
     const log = (table, op, row) => S.audit.push({ id: S.audit.length + 1, workspace_id: WS, table_name: table, op, after: row, actor_email: "you@demo", at: new Date().toISOString() });
-    self.insert = async (table, row) => { const r = Object.assign({ id: uuid(), workspace_id: WS }, row); if (table === "billable_rates" && !r.effective_from) r.effective_from = null; S[table].push(r); log(table, "INSERT", r); return [r]; };
+    self.insert = async (table, row) => { const r = Object.assign({ id: uuid(), workspace_id: WS }, row); if (table === "billable_rates" && !r.effective_from) r.effective_from = null;
+      if (table === "purchase_decisions") Object.assign(r, { id: S.purchase_decisions.length + 1, doc_number: String(r.doc_id).split(":").slice(1).join(":"), line_id: null, decided_by: "demo", decided_at: new Date().toISOString() });
+      S[table].push(r); log(table, "INSERT", r); return [r]; };
     self.upsert = async (table, rows, onConflict) => { const keys = onConflict.split(",").map((k) => k.trim()).filter((k) => k !== "workspace_id"); const out = []; for (const row of rows) { const ex = S[table].find((x) => keys.every((k) => x[k] === row[k])); if (ex) Object.assign(ex, row); else S[table].push(Object.assign({ id: uuid(), workspace_id: WS }, row)); out.push(ex || row); log(table, ex ? "UPDATE" : "INSERT", row); } return out; };
     self.update = async (table, match, patch) => { const rows = filt(S[table], match); rows.forEach((r) => { Object.assign(r, patch); log(table, "UPDATE", r); }); return rows; };
     self.remove = async (table, match) => { const rows = filt(S[table], match); S[table] = S[table].filter((r) => !rows.includes(r)); rows.forEach((r) => log(table, "DELETE", r)); return rows; };

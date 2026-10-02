@@ -162,6 +162,35 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
     await shot("08-statement");
   } else ok("no rental statement for DC4 this month (no vendor name mapped to it)");
 
+  // ---- Purchase decisions: the PO on a job not in Settings, counted on DC4 -----------------------------
+  await nav("#/settings?tab=purchases");
+  const q = await text("main");
+  check(q.includes("26-011092") && q.includes("not in Settings"), "Purchases queue lists the PO on a job not in Settings");
+  const queued = (await page.$$("form.decide")).length;
+  const poDate = await page.$eval("tr.held:has(td:text-is('26-011092')) td:nth-child(2)", (e) => e.textContent.trim());
+  const poMonth = (() => { const d = new Date(poDate); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; })();
+  const df = page.locator("form.decide[data-doc$='26-011092']");
+  await df.locator("select[name=job_number]").selectOption("50-60-225121");
+  await df.locator("input[name=reason]").fill("it is DC4's");
+  const rb = await renders();
+  await df.locator("button[value=assign]").click();
+  await page.waitForFunction((b) => window.UI.state.renders > b, rb);
+  check((await page.$$("form.decide")).length === queued - 1, "counting it on DC4 takes it off the queue");
+  await nav(`#/job/50-60-225121?m=${poMonth}`);
+  check((await text("main")).includes("counted, by decision"), `the DC4 job page for ${poMonth} shows it counted by decision`);
+  const ef = page.locator("form.decide").first();
+  if (await ef.count()) {
+    await ef.locator("input[name=reason]").fill("never priced");
+    const rb2 = await renders(); await ef.locator("button[value=exclude]").click(); await page.waitForFunction((b) => window.UI.state.renders > b, rb2);
+    check((await text("main")).includes("left out"), "the no-amount PO can be left out with a reason");
+  } else ok("no PO waits on DC4 this month");
+
+  // ---- GRforecast export: one row per job, month and bucket ---------------------------------------------
+  await nav("#/?m=2026-09");
+  const [bdl] = await Promise.all([page.waitForEvent("download", { timeout: 15000 }), page.click("#buckets")]);
+  const bp = path.join(OUT, bdl.suggestedFilename()); await bdl.saveAs(bp);
+  check(bdl.suggestedFilename() === "GR Cost 2026-09 buckets.xlsx" && fs.statSync(bp).size > 3000, "Export for GRforecast downloads the month's buckets");
+
   // ---- Export .xlsx ----------------------------------------------------------------------------------
   await nav("#/job/50-60-225121?m=2026-09");
   const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 15000 }), page.click("#xlsx")]);

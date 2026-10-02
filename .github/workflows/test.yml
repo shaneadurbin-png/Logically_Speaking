@@ -1,0 +1,57 @@
+# Three checks on every push and pull request:
+#   node   the readers and models over the fixtures (npm test)
+#   db     the same fixtures through the RPCs and views on a postgres:16 service (tests/db/run.sh)
+#   smoke  the page in a real browser, demo mode, straight from the files (tests/smoke_browser.js)
+name: tests
+on:
+  push:
+  pull_request:
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+  db:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: sudo apt-get update -q && sudo apt-get install -y -q postgresql-client
+      - run: bash tests/db/run.sh
+        env:
+          PGURL: postgresql://postgres:ci@127.0.0.1:5432
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/smoke_browser.js
+        env:
+          BASE: file://${{ github.workspace }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-screens
+          path: tmp-smoke

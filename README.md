@@ -45,7 +45,7 @@ Mission Critical Warehouse's own export is not read until a real one has been se
 - **Report (PDF)**: the job, or all jobs, laid out for print. Press the button and choose **Save as PDF**.
 - **Statement**: one vendor's equipment on rent for one job and month, as billed to the client.
 - **Settings**: jobs (campus, region, rate table, rental tax %, markup %), vendors (taxed, Liberty-owned), the vendors' job names, rate tables (per table: class, pay ID, $/hour, dates in force; retire and add, never edit), employees (certified class; names live here and nowhere else), pay types (PTO held, excluded), people (owner, editor, viewer) and the files on record.
-- **Export .xlsx** on a job: the month in sheets (summary, labor by code, by class, every line, each vendor's statement, the POs).
+- **Export .xlsx** on a job: the month in sheets (summary, labor by code, by class, every line, each vendor's statement, the POs). **Export for GRforecast** on the Portfolio: one row per job, month and bucket, the shape the forecast imports.
 
 ## How the numbers are made
 
@@ -53,7 +53,7 @@ Mission Critical Warehouse's own export is not read until a real one has been se
 
 **Rentals.** Each report is a snapshot of what is on rent as of a day. A month's figure is the **run-rate at the latest snapshot on or before the month's end**: the monthly rent of every line on it (a vendor's monthly figure, or the month rate × quantity, or the 4-week rate × quantity), not prorated. Two reports from one vendor as of the same day: the one recorded last stands. Tax is the **job's** (its site's rate, where the vendor is taxed), markup is the job's (on rent + tax, or on rent). Liberty-owned equipment is rent only, apart. An item missing from a later report went **off rent** on that report's day, and is listed, not prorated. Lines carrying only a day or week rate are shown and not totalled, and the card says so.
 
-**Purchases.** Purchase Pro's committed amount per PO, by order date. Material and Rental POs count; quotes and cancelled POs are listed and excluded; a PO with no committed amount yet, or on a job not in Settings, **waits for a decision** and is never counted silently. "NONBILLABLE" in the description puts it in Non-Billables. Rental POs are counted and shown apart, so a rental bought through a PO is not lost and not double-counted against the on-rent reports by accident.
+**Purchases.** Purchase Pro's committed amount per PO, by order date. Material and Rental POs count; quotes and cancelled POs are listed and excluded; a PO with no committed amount yet, or on a job not in Settings, **waits for a decision** and is never counted silently. "NONBILLABLE" in the description puts it in Non-Billables. Rental POs are counted and shown apart, so a rental bought through a PO is not lost and not double-counted against the on-rent reports by accident. A waiting PO is decided on the job page or on Settings › Purchases: count it on a job, in a bucket, or leave it out with a reason. The decision is about the PO number, so it holds through the next export, and the old decisions are kept.
 
 **Buckets.** Labor, Materials, Equipment, Subcontractors, Other and Non-Billables, named and coloured as GRforecast names them, so a month exported from here drops into a forecast there.
 
@@ -90,5 +90,7 @@ npm test          # the readers and models over the fixtures: refusals, held row
 npm run test:db   # the same fixtures through the RPCs and views on a local Postgres: RLS per role, recounts, parity with the JS models
 npm run smoke     # the page in a real browser, demo mode: drop everything, Record, read every page, save the PDF, export the .xlsx
 ```
+
+The same three run on GitHub Actions for every push and pull request (`.github/workflows/test.yml`), the database one against a `postgres:16` service.
 
 Every reader was checked against a real export of its kind (HH2, United Rentals, Sunbelt, Herc, EquipmentShare, Sage rate tables, Purchase Pro, the Projects register); the Herc total matched the report's own Totals row and the Sunbelt sum an independent calculation. None of those files is in this repo: it is public, and the fixtures are made up by `tests/fixtures/make_fixtures.js`.

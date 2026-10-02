@@ -146,8 +146,10 @@
     for (const j of st.settings.jobs.filter((j) => j.active !== false)) (groups[j.campus || "Other"] = groups[j.campus || "Other"] || []).push(j);
     const tot = rows.reduce((t, r) => ({ labor: t.labor + r.labor_cents, rent: t.rent + r.rental_cents + r.rental_lo_cents, purch: t.purch + r.purchase_cents, pending: t.pending + r.pending_cents, all: t.all + r.total_cents }), { labor: 0, rent: 0, purch: 0, pending: 0, all: 0 });
     const withCost = rows.filter((r) => r.total_cents).length;
-    return html`<div class="row" style="justify-content:space-between"><h1>Portfolio</h1>${monthNav(m, "#/")}<a class="noprint" href="#/report/all?m=${m}"><button>Report (PDF)</button></a></div>
+    const pendingLines = rows.reduce((t, r) => t + (r.pending_lines || 0), 0);
+    return html`<div class="row" style="justify-content:space-between"><h1>Portfolio</h1>${monthNav(m, "#/")}<span class="row noprint"><a href="#/report/all?m=${m}"><button>Report (PDF)</button></a><button id="buckets" title="one row per job, month and bucket, the shape GRforecast imports">Export for GRforecast</button></span></div>
       <div class="tiles">${tile("total", "All jobs, this month", tot.all, `${n1(withCost, "job")} with cost`)}${tile("labor", "Labor", tot.labor)}${tile("equipment", "Rentals to client", tot.rent)}${tile("materials", "Purchases (POs)", tot.purch, tot.pending ? `${money(tot.pending, true)} awaiting a decision` : "")}</div>
+      ${pendingLines && st.db.canEdit() ? html`<p class="noprint"><a href="#/settings?tab=purchases">${n1(pendingLines, "PO awaits", "POs await")} a decision &rarr;</a></p>` : ""}
       ${Object.entries(groups).sort().map(([campus, jobs]) => html`<h2>${campus}${jobs[0].region ? html` <span class="muted small">${jobs[0].region}</span>` : ""}</h2><div class="cards">${jobs.map((j) => jobCard(j, by[j.job_number], m))}</div>`)}
       ${st.settings.jobs.length === 0 ? html`<div class="notice">No jobs yet. Drop the Projects register or an HH2 export on Update, or add them in <a href="#/settings">Settings</a>.</div>` : ""}`;
   }
@@ -196,10 +198,23 @@
     : h.status === "held:unknown job" ? `${h.job_number} ${h.job_name || ""}` : h.status === "held:no rate table" ? `${jobName(h.job_number)} has no rate table`
     : h.status === "held:PTO pay type" ? h.pay_type_name : h.status === "held:no class" ? `employee ${h.employee_number}` : h.employee_number || "";
   const heldTab = (held) => held.some((h) => h.status === "held:no rate" || h.status === "held:no rate table") ? "rates" : held.some((h) => h.status === "held:unknown job") ? "jobs" : held.some((h) => h.status === "held:no class") ? "employees" : "paytypes";
+  const bucketName = (b) => (b ? (B.META[b] ? B.META[b].name : b) : "");
+  const poSort = (a, b) => ((a.doc_date || "") + a.doc_number < (b.doc_date || "") + b.doc_number ? -1 : 1);
+  const poStatus = (r) => html`<span class="pill ${r.status === "needs_decision" ? "held" : r.status === "excluded" ? "excluded" : "priced"}">${r.status === "needs_decision" ? "needs a decision" : r.status === "excluded" ? (r.cancelled ? "cancelled" : r.quote ? "quote" : "left out") : r.status === "confirmed" ? "counted, by decision" : "counted"}</span>`;
+  /** the decision an editor makes on a PO the export could not count: count it on a job, in a bucket, or leave it out */
+  function decideForm(r, defaultJob) {
+    if (!st.db.canEdit()) return "";
+    const job = st.settings.jobByNumber[r.job_number] ? r.job_number : defaultJob || (st.settings.jobs[0] || {}).job_number || "";
+    const noAmount = r.total_cents == null;
+    return html`<form class="decide inline" data-doc="${r.id}" style="margin-top:4px">
+      ${noAmount ? html`<span class="muted small">No committed amount yet: it counts by itself once an export carries one, or</span>` : html`<label>Job<select name="job_number">${st.settings.jobs.map((j) => html`<option value="${j.job_number}" ${j.job_number === job ? "selected" : ""}>${j.short_name} · ${j.job_number}</option>`)}</select></label><label>Bucket<select name="bucket">${B.ALL.map((b) => html`<option value="${b}" ${b === (r.bucket || "MATERIALS") ? "selected" : ""}>${B.META[b].name}</option>`)}</select></label>`}
+      <label>Reason<input name="reason" placeholder="${noAmount ? "why it is left out" : "optional"}" style="min-width:180px"></label>
+      ${noAmount ? "" : html`<button name="decision" value="assign" class="primary">Count it</button>`}<button name="decision" value="exclude">Leave it out</button></form>`;
+  }
   function purchaseTable(rows, d) {
     const counted = rows.filter((r) => r.status === "auto" || r.status === "confirmed");
     return html`<table><tr><th>PO #</th><th>Date</th><th>Supplier</th><th>Description</th><th>Type</th><th>Bucket</th><th class="num">Committed</th><th></th></tr>
-      ${rows.slice().sort((a, b) => (a.doc_date + a.doc_number < b.doc_date + b.doc_number ? -1 : 1)).map((r) => html`<tr class="${r.status === "needs_decision" ? "held" : ""}"><td class="mono">${r.doc_number}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="small">${r.order_type || ""}</td><td class="small">${r.bucket ? B.META[r.bucket] ? B.META[r.bucket].name : r.bucket : ""}</td><td class="num">${r.total_cents == null ? html`<span class="warn">no amount</span>` : money(r.total_cents)}</td><td><span class="pill ${r.status === "needs_decision" ? "held" : r.status === "excluded" ? "excluded" : "priced"}">${r.status === "needs_decision" ? "needs a decision" : r.status === "excluded" ? (r.cancelled ? "cancelled" : r.quote ? "quote" : "excluded") : "counted"}</span></td></tr>`)}
+      ${rows.slice().sort(poSort).map((r) => html`<tr class="${r.status === "needs_decision" ? "held" : ""}"><td class="mono">${r.doc_number}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="small">${r.order_type || ""}</td><td class="small">${bucketName(r.bucket)}</td><td class="num">${r.total_cents == null ? html`<span class="warn">no amount</span>` : money(r.total_cents)}</td><td>${poStatus(r)}</td></tr>${r.status === "needs_decision" && st.db.canEdit() ? html`<tr><td colspan="8">${decideForm(r, d.job.job_number)}</td></tr>` : ""}`)}
       <tr class="total"><td colspan="6">Counted · ${n1(counted.length, "PO")}</td><td class="num">${money(counted.reduce((a, r) => a + (r.total_cents || 0), 0))}</td><td></td></tr></table>`;
   }
   async function jobView(n, m) {
@@ -237,6 +252,11 @@
       ${d.purchases.length ? html`<p class="muted small">Purchase Pro's committed amount per PO, by order date, from the latest export. Quotes and cancelled POs are listed and not counted.</p>${purchaseTable(d.purchases, d)}` : html`<p class="muted">No POs dated this month in the latest Purchase Pro export.</p>`}
       ${d.lines.length ? html`<h2>Labor by cost code</h2><table><tr><th>Cost code</th><th>Name</th><th class="num">Hours</th><th class="num">Cost</th><th class="num">Held hours</th></tr>
         ${Object.values(byCode).sort((a, b) => (a.code < b.code ? -1 : 1)).map((c) => html`<tr><td class="mono">${c.code}</td><td>${c.name}</td><td class="num">${C.fmtHours(c.hours)}</td><td class="num">${money(c.cost)}</td><td class="num ${c.held ? "warn" : ""}">${c.held ? C.fmtHours(c.held) : ""}</td></tr>`)}</table>` : ""}`;
+  }
+  async function exportBuckets(m) {
+    const rows = (await st.db.view("v_month_buckets", { month: m + "-01" })).filter((r) => r.cents).sort((a, b) => (a.job_number + a.bucket < b.job_number + b.bucket ? -1 : 1));
+    if (!rows.length) return toast(`Nothing recorded for ${C.fmtMonth(m)}.`);
+    E.download(E.monthBuckets(rows.map((r) => Object.assign({}, r, { month: ym(r.month) }))), E.fileSafe(`GR Cost ${m} buckets.xlsx`));
   }
   async function exportJob(n, m) {
     const d = await jobData(n, m);
@@ -388,7 +408,7 @@
   const classOptions = (selected) => html`<option value="" ${selected ? "" : "selected"}>(by prefix)</option>${L.KNOWN_CLASSES.map((c) => html`<option value="${c}" ${c === selected ? "selected" : ""}>${classLabel(c)}</option>`)}`;
   async function settingsView(tab) {
     const S = st.settings, edit = st.db.canEdit();
-    const tabs = [["jobs", "Jobs"], ["vendors", "Vendors"], ["jobmap", "Vendor job names"], ["rates", "Rate tables"], ["employees", "Employees"], ["paytypes", "Pay types"], ["members", "People"], ["files", "Files"]];
+    const tabs = [["jobs", "Jobs"], ["vendors", "Vendors"], ["jobmap", "Vendor job names"], ["rates", "Rate tables"], ["employees", "Employees"], ["paytypes", "Pay types"], ["purchases", "Purchases"], ["members", "People"], ["files", "Files"]];
     let body;
     if (tab === "jobs") {
       const held = edit ? await st.db.view("v_labor_held", { status: "held:unknown job" }) : [];
@@ -451,6 +471,11 @@
       body = html`<p class="muted small">Paid time off has hours but no billable rate; it is held for the audit, never priced. "Excluded" drops a pay type from the month entirely. Pay types not listed are rated.</p>
         <table><tr><th>Pay type name</th><th>Policy</th></tr>${S.policy.map((p) => html`<tr><td>${p.pay_type_name}</td><td>${p.policy}</td></tr>`)}</table>
         ${edit ? html`<form id="addpolicy" class="inline"><label>Pay type name<input name="pay_type_name" required></label><label>Policy<select name="policy"><option value="held_pto">held (PTO)</option><option value="excluded">excluded</option><option value="rated">rated</option></select></label><button>Set</button></form>` : ""}`;
+    } else if (tab === "purchases") {
+      const pend = (await st.db.view("v_purchase_docs", { status: "needs_decision" }).catch(() => [])).sort(poSort);
+      body = html`<p class="muted small">POs the latest Purchase Pro export could not count by itself: on a job not in Settings, or with no committed amount yet. Count one on a job, in its bucket, or leave it out with a reason. A decision is about the PO, so it holds through the next export. If the job is real, add it on the Jobs tab instead: every PO on it then counts by itself.</p>
+        ${pend.length ? html`<table><tr><th>PO #</th><th>Date</th><th>Supplier</th><th>Description</th><th>Type</th><th>PO's job</th><th class="num">Committed</th></tr>
+          ${pend.map((r) => html`<tr class="held"><td class="mono">${r.doc_number}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="small">${r.order_type || ""}</td><td>${st.settings.jobByNumber[r.job_number] ? `${jobName(r.job_number)} · ${r.job_number}` : html`<span class="warn">${r.job_number || "(none)"} · not in Settings</span>`}</td><td class="num">${r.total_cents == null ? html`<span class="warn">no amount</span>` : money(r.total_cents)}</td></tr><tr><td colspan="7">${decideForm(r, "")}</td></tr>`)}</table>` : html`<p class="muted">Nothing waits for a decision.</p>`}`;
     } else if (tab === "members") {
       body = html`<table><tr><th>Email</th><th>Role</th><th>Name</th></tr>${S.members.map((m) => html`<tr><td>${m.email}</td><td>${m.role}</td><td>${m.display_name || ""}</td></tr>`)}</table>
         ${st.db.role === "owner" ? html`<form id="invite" class="inline"><label>Email<input name="email" type="email" required></label><label>Role<select name="role"><option value="viewer">viewer (sees totals, never names)</option><option value="editor">editor</option><option value="owner">owner</option></select></label><button>Invite</button></form>` : html`<p class="muted small">Owners invite people.</p>`}`;
@@ -485,6 +510,16 @@
     if (r.page === "update") wireUpdate();
     if (r.page === "settings") wireSettings();
     const x = $("#xlsx"); if (x) x.addEventListener("click", () => exportJob(r.parts[1], monthQ(r.q)).catch((e) => toast(e.message)));
+    const bk = $("#buckets"); if (bk) bk.addEventListener("click", () => exportBuckets(monthQ(r.q)).catch((e) => toast(e.message)));
+    $$("form.decide").forEach((f) => f.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const decision = (ev.submitter && ev.submitter.value) || "assign", d = Object.fromEntries(new FormData(f)), reason = (d.reason || "").trim();
+      if (decision === "exclude" && !reason) return toast("Say why it is left out.");
+      try {
+        await st.db.insert("purchase_decisions", { doc_id: f.dataset.doc, job_number: decision === "assign" ? d.job_number : null, bucket: decision === "assign" ? d.bucket : null, decision, reason: reason || null });
+        toast(decision === "assign" ? `Counted on ${jobName(d.job_number)}; its page shows it now.` : "Left out; it stays listed as such."); render();
+      } catch (e) { toast(e.message); }
+    }));
     const p = $("#print"); if (p) p.addEventListener("click", () => window.print());
     if (r.q.m) st.month = monthQ(r.q);
   }
