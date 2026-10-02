@@ -35,6 +35,16 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   check((await text("main")).includes("Nothing recorded"), "Portfolio is empty before any drop");
   await shot("01-portfolio-empty");
 
+  await nav("#/review");
+  check((await text(".wcr")).includes("GR Weekly Cost Review"), "weekly review opens on an empty workspace");
+  check((await text("#wcr-labor-cost")) === "$0.00", "empty labor burn is zero");
+  check((await page.$$("main .cards .card")).length === 0, "the review is not the portfolio cards");
+  await nav("#/review?tab=rental");
+  check((await text(".wcr")).includes("Week Ending does not apply"), "rental tab says the week slicer does not apply");
+  await nav("#/review?tab=po");
+  check((await text(".wcr")).includes("Weekly Committed POs"), "committed PO tab opens");
+  await nav("#/?m=2026-09");
+
   // ---- Update: drop every fixture -----------------------------------------------
   await nav("#/update");
   await page.waitForSelector("#files", { state: "attached" });
@@ -95,6 +105,18 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   console.log("    campuses: " + campuses.join(" / "));
   check(campuses.length >= 1, "jobs are grouped by campus");
   await shot("04-portfolio");
+
+  await nav("#/review");
+  const laborKpi = await text("#wcr-labor-cost");
+  console.log("    review labor " + laborKpi);
+  check(laborKpi && laborKpi !== "$0.00", "weekly review prices the recorded week");
+  await shot("04b-review-labor");
+  await nav("#/review?tab=rental");
+  check((await text(".wcr")).includes("Weekly Rental Burn"), "rental burn opens after record");
+  await shot("04c-review-rental");
+  await nav("#/review?tab=po");
+  check((await text(".wcr")).includes("Weekly Committed POs"), "committed POs open after record");
+  await shot("04d-review-po");
 
   // ---- Job DC4 -------------------------------------------------------------------------
   await nav("#/job/50-60-225121?m=2026-09");

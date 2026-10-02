@@ -6,14 +6,15 @@
      #/                 Portfolio - every job this month, grouped by campus
      #/job/<n>?m=       Job - the tiles, labor by class and code, rentals, purchases, held
      #/report/<n>?m=    Report - print it, choose Save as PDF (#/report/all for every job)
+     #/review?tab=      Weekly cost review - labor, rentals, committed POs (tab=labor|rental|po&w=week)
      #/statement/<n>?m=&v=  the client's rental statement for one vendor
      #/update           Update - drop the files, read the cards, press Record
      #/settings         Settings - jobs, vendors, their job names, rate tables, employees, pay types, people, files */
 (function (root) {
   "use strict";
-  const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, V = root.OnRentVendors, SS = root.SiteServices,
+  const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig;
-  const RELEASE = "0.1.2";
+  const RELEASE = "0.1.3";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -57,6 +58,7 @@
       let body;
       if (r.page === "job" && r.parts[1]) body = await jobView(r.parts[1], monthQ(r.q));
       else if (r.page === "report") body = await reportView(r.parts[1] || "all", monthQ(r.q));
+      else if (r.page === "review") body = await reviewView();
       else if (r.page === "statement" && r.parts[1]) body = await statementView(r.parts[1], monthQ(r.q), r.q.v);
       else if (r.page === "update") body = updateView();
       else if (r.page === "settings") body = await settingsView(r.q.tab || "jobs");
@@ -128,7 +130,7 @@
     const age = (iso) => { if (!iso) return "none"; const d = Math.round((Date.now() - new Date(iso + "T00:00:00").getTime()) / 86400000); return d <= 10 ? "fresh" : "stale"; };
     const nav = (p, label) => html`<a href="#/${p}" class="${st.route.page === p || (p === "" && !st.route.page) ? "on" : ""}">${label}</a>`;
     return html`<header class="top"><span class="brand">GR Cost</span>
-      <nav>${nav("", "Portfolio")}${st.db.canEdit() ? nav("update", "Update") : ""}${nav("settings", "Settings")}</nav>
+      <nav>${nav("", "Portfolio")}${nav("review", "Review")}${st.db.canEdit() ? nav("update", "Update") : ""}${nav("settings", "Settings")}</nav>
       <span class="spacer"></span>
       ${chip(age(f.hh2_through), f.hh2_through ? `HH2 through ${C.fmtDay(f.hh2_through)}` : "No HH2 yet", "labor")}
       ${Object.keys(on).length ? Object.entries(on).map(([k, d]) => chip(age(d), `${vendorName(k)} ${C.fmtDay(d)}`, "on-rent report")) : chip("none", "No on-rent report yet")}
@@ -155,7 +157,7 @@
     const laborNote = !laborHours && f.hh2_through && C.monthOf(f.hh2_through) !== m ? `no hours in ${C.fmtMonth(m)} yet; HH2 through ${C.fmtDay(f.hh2_through)} (see ${C.fmtMonth(C.monthOf(f.hh2_through))})`
       : laborHours ? `${hours(laborHours)} hours${heldHours ? `, ${hours(heldHours)} held` : ""}` : "";
     const pendingLines = rows.reduce((t, r) => t + (r.pending_lines || 0), 0);
-    return html`<div class="row" style="justify-content:space-between"><h1>Portfolio</h1>${monthNav(m, "#/")}<span class="row noprint"><a href="#/report/all?m=${m}"><button>Report (PDF)</button></a><button id="buckets" title="one row per job, month and bucket, the shape GRforecast imports">Export for GRforecast</button></span></div>
+    return html`<div class="row" style="justify-content:space-between"><h1>Portfolio</h1>${monthNav(m, "#/")}<span class="row noprint"><a href="#/review"><button>Weekly review</button></a><a href="#/report/all?m=${m}"><button>Report (PDF)</button></a><button id="buckets" title="one row per job, month and bucket, the shape GRforecast imports">Export for GRforecast</button></span></div>
       <div class="tiles">${tile("total", "All jobs, this month", tot.all, `${n1(withCost, "job")} with cost`)}${tile("labor", "Labor", tot.labor, laborNote)}${tile("equipment", "Rentals to client", tot.rent, "on-rent reports and confirmed recurring charges")}${tile("materials", "Purchases (material POs)", tot.purch, tot.pending ? `${money(tot.pending, true)} awaiting a decision` : "")}</div>
       ${pendingLines && st.db.canEdit() ? html`<p class="noprint"><a href="#/settings?tab=purchases">${n1(pendingLines, "PO awaits", "POs await")} a decision &rarr;</a></p>` : ""}
       ${Object.entries(groups).sort().map(([campus, jobs]) => html`<h2>${campus}${jobs[0].region ? html` <span class="muted small">${jobs[0].region}</span>` : ""}</h2><div class="cards">${jobs.map((j) => jobCard(j, by[j.job_number], m, siteOf(j.job_number)))}</div>`)}
@@ -333,6 +335,100 @@
     const wb = E.jobMonth({ job: d.job, month: m, labor: { summary, rows: d.lines }, rentals: statementsFor(d), purchases, recurring: d.recur,
       site: { counts: d.siteCounts, trailerLabel: SS.trailerLabel(d.siteCounts.trailers), restroomLine: restroomLine(d.siteCounts.restrooms), dump: d.dump, pulls: d.pulls } });
     E.download(wb, E.fileSafe(`${d.job.short_name} ${m} cost.xlsx`));
+  }
+
+  // ---- Weekly cost review (the Liberty dashboard) ---------------------------------------------------
+  async function reviewView() {
+    const q = st.route.q;
+    const tab = q.tab === "rental" || q.tab === "po" ? q.tab : "labor";
+    const db = st.db;
+    const showNames = db.canEdit();
+    const [laborRows, items, pos, fresh] = await Promise.all([
+      db.view("v_labor_priced").catch(() => []),
+      db.view("v_rental_items").catch(() => []),
+      db.view("v_purchase_docs").catch(() => []),
+      db.view("v_freshness").catch(() => [])]);
+    const names = Object.fromEntries((st.settings.employees || []).map((e) => [e.employee_number, e.name]));
+    const vendors = st.settings.vendorByKey || {};
+    const labor = laborRows.filter((r) => r.status === "priced").map((r) => ({
+      week_ending: r.week_ending || L.weekEnding(r.work_date), job_number: r.job_number,
+      employee: showNames ? (names[r.employee_number] || r.employee_number) : null,
+      employee_key: r.employee_number, certified_class: r.certified_class,
+      cost_code: r.cost_code, cost_code_name: r.cost_code_name, pay_type: r.pay_type, pay_type_name: r.pay_type_name,
+      hours: r.hours != null ? +r.hours : (r.hours_x100 || 0) / 100, cost_cents: r.cost_cents || 0,
+    }));
+    const rentals = items.filter((i) => !i.off_rent_date).map((i) => ({
+      job_number: i.job_number, vendor_key: i.vendor_key,
+      vendor_name: (vendors[i.vendor_key] && vendors[i.vendor_key].name) || i.vendor_key,
+      description: i.description || "(no description)",
+      category: (i.raw && (i.raw.cat_class || i.raw.code1_label)) || "Equipment",
+      qty: +i.qty || 0, monthly_rent_cents: i.monthly_rent_cents, liberty_owned: !!i.liberty_owned,
+    }));
+    const purchases = pos.map((p) => ({
+      doc_date: p.doc_date, doc_number: p.doc_number, job_number: p.job_number,
+      supplier: p.vendor_name_raw || p.vendor_key || "", committed_cents: p.total_cents,
+      cancelled: p.cancelled, quote: p.quote, status: p.status, order_type: p.order_type,
+    }));
+    const rev = st.review || (st.review = { campuses: null, projects: null, sort: {} });
+    const f = fresh[0] || {};
+    const model = Rev.build({
+      jobs: st.settings.jobs.filter((j) => j.active !== false),
+      labor, rentals, purchases, rentalSettings: st.settings.rental,
+      week: q.w || null, campuses: rev.campuses, projects: rev.projects, tab, sort: rev.sort, showNames,
+      today: C.todayIso(), updated: f.hh2_through || f.po_as_of || null,
+    });
+    return raw(Rev.html(model));
+  }
+  function wireReview() {
+    const box = $(".wcr");
+    if (!box) return;
+    const rev = st.review || (st.review = { campuses: null, projects: null, sort: {} });
+    const tab = st.route.q.tab === "rental" || st.route.q.tab === "po" ? st.route.q.tab : "labor";
+    $$(".wcr-dd-btn", box).forEach((b) => b.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const dd = b.closest(".wcr-dd");
+      const open = dd.classList.contains("open");
+      $$(".wcr-dd.open").forEach((d) => d.classList.remove("open"));
+      if (!open) dd.classList.add("open");
+    }));
+    if (!st.reviewDoc) {
+      st.reviewDoc = true;
+      document.addEventListener("click", () => $$(".wcr-dd.open").forEach((d) => d.classList.remove("open")));
+    }
+    const week = $("#wcr-week");
+    if (week) week.addEventListener("change", () => { location.hash = `#/review?tab=${tab}&w=${week.value}`; });
+    const clear = $("#wcr-clear");
+    if (clear) clear.addEventListener("click", () => { rev.campuses = null; rev.projects = null; render(); });
+    const read = (sel) => $$(sel, box).filter((x) => x.checked).map((x) => x.value);
+    $$("[data-campus]", box).forEach((el) => el.addEventListener("change", () => {
+      const all = $$("[data-campus]", box);
+      const checked = read("[data-campus]");
+      rev.campuses = checked.length === all.length ? null : checked;
+      rev.projects = null;
+      render();
+    }));
+    const campusAll = $("[data-campus-all]", box);
+    if (campusAll) campusAll.addEventListener("change", () => { rev.campuses = campusAll.checked ? null : []; rev.projects = null; render(); });
+    $$("[data-only-campus]", box).forEach((b) => b.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); rev.campuses = [b.dataset.onlyCampus]; rev.projects = null; render(); }));
+    $$("[data-project]", box).forEach((el) => el.addEventListener("change", () => {
+      const all = $$("[data-project]", box);
+      const checked = read("[data-project]");
+      rev.projects = checked.length === all.length ? null : checked;
+      render();
+    }));
+    const projectAll = $("[data-project-all]", box);
+    if (projectAll) projectAll.addEventListener("change", () => { rev.projects = projectAll.checked ? null : []; render(); });
+    $$("[data-only-project]", box).forEach((b) => b.addEventListener("click", (ev) => { ev.preventDefault(); ev.stopPropagation(); rev.projects = [b.dataset.onlyProject]; render(); }));
+    $$("th[data-sort]", box).forEach((th) => th.addEventListener("click", () => {
+      const [which, key] = th.dataset.sort.split(":");
+      const cur = rev.sort[which] || {};
+      rev.sort[which] = { key, dir: cur.key === key && cur.dir === "asc" ? "desc" : "asc" };
+      render();
+    }));
+    const mark = (sel) => { const boxes = $$(sel, box); const all = $(sel === "[data-campus]" ? "[data-campus-all]" : "[data-project-all]", box); if (all && boxes.length) all.indeterminate = boxes.some((b) => b.checked) && boxes.some((b) => !b.checked); };
+    mark("[data-campus]"); mark("[data-project]");
+    const print = $("#wcr-print");
+    if (print) print.addEventListener("click", () => window.print());
   }
 
   // ---- Report (print -> Save as PDF) and Statement ---------------------------------------------------
@@ -604,6 +700,7 @@
     const r = st.route;
     if (r.page === "update") wireUpdate();
     if (r.page === "settings") wireSettings();
+    if (r.page === "review") wireReview();
     const x = $("#xlsx"); if (x) x.addEventListener("click", () => exportJob(r.parts[1], monthQ(r.q)).catch((e) => toast(e.message)));
     const bk = $("#buckets"); if (bk) bk.addEventListener("click", () => exportBuckets(monthQ(r.q)).catch((e) => toast(e.message)));
     $$("form.confirm").forEach((f) => f.addEventListener("submit", async (ev) => {
