@@ -13,8 +13,8 @@
 (function (root) {
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
-    Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig;
-  const RELEASE = "0.1.5";
+    Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig, PM = root.PortfolioMap;
+  const RELEASE = "0.1.6";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -143,6 +143,7 @@
 
   // ---- Portfolio ----------------------------------------------------------------------------------
   const monthNav = (m, base) => html`<div class="row noprint"><a href="${base}?m=${prevMonth(m)}">&larr; ${C.fmtMonth(prevMonth(m))}</a><span class="big">${C.fmtMonth(m)}</span><a href="${base}?m=${nextMonth(m)}">${C.fmtMonth(nextMonth(m))} &rarr;</a></div>`;
+  const portfolioHref = (month, campus) => `#/?m=${month}${campus ? `&c=${encodeURIComponent(campus)}` : ""}`;
   async function portfolioView(m) {
     const rows = await st.db.view("v_job_month", { month: m + "-01" });
     const by = Object.fromEntries(rows.map((r) => [r.job_number, r]));
@@ -157,11 +158,57 @@
     const laborNote = !laborHours && f.hh2_through && C.monthOf(f.hh2_through) !== m ? `no hours in ${C.fmtMonth(m)} yet; HH2 through ${C.fmtDay(f.hh2_through)} (see ${C.fmtMonth(C.monthOf(f.hh2_through))})`
       : laborHours ? `${hours(laborHours)} hours${heldHours ? `, ${hours(heldHours)} held` : ""}` : "";
     const pendingLines = rows.reduce((t, r) => t + (r.pending_lines || 0), 0);
-    return html`<div class="row" style="justify-content:space-between"><h1>Portfolio</h1>${monthNav(m, "#/")}<span class="row noprint"><a href="#/review"><button>Weekly review</button></a><a href="#/report/all?m=${m}"><button>Report (PDF)</button></a><button id="buckets" title="one row per job, month and bucket, the shape GRforecast imports">Export for GRforecast</button></span></div>
-      <div class="tiles">${tile("total", "All jobs, this month", tot.all, `${n1(withCost, "job")} with cost`)}${tile("labor", "Labor", tot.labor, laborNote)}${tile("equipment", "Rentals to client", tot.rent, "on-rent reports and confirmed recurring charges")}${tile("materials", "Purchases (material POs)", tot.purch, tot.pending ? `${money(tot.pending, true)} awaiting a decision` : "")}</div>
+    const campuses = Object.entries(groups).map(([name, jobs]) => {
+      let total = 0, hours = 0, held = 0;
+      for (const j of jobs) {
+        const r = by[j.job_number];
+        if (!r) continue;
+        total += r.total_cents || 0;
+        hours += +r.labor_hours || 0;
+        held += +r.labor_held_hours || 0;
+      }
+      const place = PM.locate(name);
+      return { name, jobs, total, hours, held, place,
+        region: (jobs.find((j) => j.region) || {}).region || (place && place.place) || "",
+        hasCost: total !== 0, active: total !== 0 || hours !== 0 || held !== 0 };
+    }).sort((a, b) => (b.total - a.total) || a.name.localeCompare(b.name));
+    const wanted = (st.route.q.c || "").trim();
+    const hit = campuses.find((c) => c.name.toLowerCase() === wanted.toLowerCase());
+    const selected = hit ? hit.name : "";
+    const shown = selected ? campuses.filter((c) => c.name === selected) : campuses;
+    const points = campuses.filter((c) => c.place).map((c) => ({ id: c.name, name: c.name, lon: c.place.lon, lat: c.place.lat, hasCost: c.hasCost, selected: c.name === selected }));
+    return html`<div class="pf">
+      <div class="pf-head">
+        <div class="pf-intro">
+          <h1 class="pf-title">What each campus has cost.</h1>
+          <p class="pf-sub">${n1(campuses.length, "campus", "campuses")} · ${money(tot.all, true)} this month. Figures come from HH2, the on-rent reports, and Purchase Pro.</p>
+        </div>
+        <div class="pf-tools noprint">
+          <div class="row pf-months"><a href="${portfolioHref(prevMonth(m), selected)}">&larr; ${C.fmtMonth(prevMonth(m))}</a><span class="big">${C.fmtMonth(m)}</span><a href="${portfolioHref(nextMonth(m), selected)}">${C.fmtMonth(nextMonth(m))} &rarr;</a></div>
+          <span class="row"><a href="#/review"><button>Weekly review</button></a><a href="#/report/all?m=${m}"><button>Report (PDF)</button></a><button id="buckets" title="one row per job, month and bucket, the shape GRforecast imports">Export for GRforecast</button></span>
+        </div>
+      </div>
+      <div class="pf-band">
+        <div class="pf-map">${raw(PM.svg({ points, selectedState: hit && hit.place ? hit.place.state : "" }))}
+          <div class="pf-legend"><span><i class="cost"></i>Has cost this month</span><span><i></i>No cost yet</span><span class="note">Each dot is a campus, where it is.</span></div>
+        </div>
+        <aside class="pf-side">
+          <div class="pf-side-in">
+            <div class="pf-side-head"><div class="pf-side-title">Campuses</div><div class="pf-side-col">this month</div></div>
+            <button type="button" id="pf-all" class="pf-all ${selected ? "" : "on"}">All</button>
+            <div class="pf-rows">${campuses.map((c) => html`<button type="button" class="pf-row ${c.name === selected ? "on" : ""}" data-campus="${c.name}">
+              <span class="pf-bullet ${c.hasCost ? "on" : ""}"></span>
+              <span class="pf-row-main"><span class="pf-row-name">${c.name}</span>${c.region ? html`<span class="pf-row-region">${c.region}</span>` : ""}${c.active ? html`<span class="pf-live">Active</span>` : ""}</span>
+              <span class="pf-row-fig"><span class="pf-row-money">${money(c.total, true)}</span><span class="pf-row-jobs">${n1(c.jobs.length, "job")}</span></span>
+            </button>`)}</div>
+          </div>
+        </aside>
+      </div>
+      <div class="tiles">${tile("labor", "Labor", tot.labor, laborNote)}${tile("equipment", "Rentals to client", tot.rent, "on-rent reports and confirmed recurring charges")}${tile("materials", "Purchases", tot.purch, tot.pending ? `${money(tot.pending, true)} awaiting a decision` : "")}${tile("total", "Total", tot.all, `${n1(withCost, "job")} with cost`)}</div>
       ${pendingLines && st.db.canEdit() ? html`<p class="noprint"><a href="#/settings?tab=purchases">${n1(pendingLines, "PO awaits", "POs await")} a decision &rarr;</a></p>` : ""}
-      ${Object.entries(groups).sort().map(([campus, jobs]) => html`<h2>${campus}${jobs[0].region ? html` <span class="muted small">${jobs[0].region}</span>` : ""}</h2><div class="cards">${jobs.map((j) => jobCard(j, by[j.job_number], m, siteOf(j.job_number)))}</div>`)}
-      ${st.settings.jobs.length === 0 ? html`<div class="notice">No jobs yet. Drop the Projects register or an HH2 export on Update, or add them in <a href="#/settings">Settings</a>.</div>` : ""}`;
+      ${shown.map((c) => html`<h2>${c.name}${c.region ? html` <span class="muted small">${c.region}</span>` : ""}</h2><div class="cards">${c.jobs.map((j) => jobCard(j, by[j.job_number], m, siteOf(j.job_number)))}</div>`)}
+      ${st.settings.jobs.length === 0 ? html`<div class="notice">No jobs yet. Drop the Projects register or an HH2 export on Update, or add them in <a href="#/settings">Settings</a>.</div>` : ""}
+    </div>`;
   }
   const tile = (cls, label, cents, sub) => html`<div class="tile ${cls}"><div class="label">${label}</div><div class="value">${money(cents, true)}</div><div class="sub">${sub || ""}</div></div>`;
   /** short_name is the label; name is the longer title. The register and HH2 often store the same string in both, and the report used to print it twice. */
@@ -718,8 +765,24 @@
   }
 
   // ---- wiring ------------------------------------------------------------------------------------------------------
+  function wirePortfolio() {
+    const m = monthQ(st.route.q);
+    const cur = (st.route.q.c || "").trim();
+    const go = (name) => {
+      const same = cur && String(name).toLowerCase() === cur.toLowerCase();
+      location.hash = !name || same ? `#/?m=${m}` : portfolioHref(m, name);
+    };
+    $$(".pf [data-campus]").forEach((el) => {
+      el.addEventListener("click", () => go(el.getAttribute("data-campus")));
+      el.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); go(el.getAttribute("data-campus")); } });
+    });
+    const all = $("#pf-all");
+    if (all) all.addEventListener("click", () => { location.hash = `#/?m=${m}`; });
+  }
+
   function wire() {
     const r = st.route;
+    if (!r.page) wirePortfolio();
     if (r.page === "update") wireUpdate();
     if (r.page === "settings") wireSettings();
     if (r.page === "review") wireReview();
