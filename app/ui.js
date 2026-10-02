@@ -14,7 +14,7 @@
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig;
-  const RELEASE = "0.1.3";
+  const RELEASE = "0.1.4";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -164,9 +164,16 @@
       ${st.settings.jobs.length === 0 ? html`<div class="notice">No jobs yet. Drop the Projects register or an HH2 export on Update, or add them in <a href="#/settings">Settings</a>.</div>` : ""}`;
   }
   const tile = (cls, label, cents, sub) => html`<div class="tile ${cls}"><div class="label">${label}</div><div class="value">${money(cents, true)}</div><div class="sub">${sub || ""}</div></div>`;
+  /** short_name is the label; name is the longer title. The register and HH2 often store the same string in both, and the report used to print it twice. */
+  function jobHead(j) {
+    const short = (j && (j.short_name || j.job_number)) || "";
+    const name = j && j.name && String(j.name).trim() !== String(short).trim() ? j.name : "";
+    return { short, name };
+  }
   function jobCard(j, r, m, siteLabel) {
-    if (!r || !r.total_cents && !r.labor_held_hours && !r.pending_lines) return html`<div class="card"><h3><a href="#/job/${j.job_number}?m=${m}">${j.short_name}</a> <span class="muted small">${j.job_number}</span></h3><p class="muted">Nothing recorded for ${C.fmtMonth(m)}.</p>${siteLabel ? html`<p class="muted small">${siteLabel}</p>` : ""}</div>`;
-    return html`<div class="card"><h3><a href="#/job/${j.job_number}?m=${m}">${j.short_name}</a> <span class="muted small">${j.name || j.job_number}</span></h3>
+    const head = jobHead(j);
+    if (!r || !r.total_cents && !r.labor_held_hours && !r.pending_lines) return html`<div class="card"><h3><a href="#/job/${j.job_number}?m=${m}">${head.short}</a> <span class="muted small">${j.job_number}</span></h3><p class="muted">Nothing recorded for ${C.fmtMonth(m)}.</p>${siteLabel ? html`<p class="muted small">${siteLabel}</p>` : ""}</div>`;
+    return html`<div class="card"><h3><a href="#/job/${j.job_number}?m=${m}">${head.short}</a> <span class="muted small">${head.name || j.job_number}</span></h3>
       <table><tr><td>Labor</td><td class="num">${money(r.labor_cents)}</td><td class="muted small">${hours(r.labor_hours)} h${r.labor_held_hours ? html`, <span class="warn">${hours(r.labor_held_hours)} held</span>` : ""}</td></tr>
       <tr><td>Rentals</td><td class="num">${money(r.rental_cents + (r.offfeed_cents || 0))}</td><td class="muted small">${r.rental_lines} on rent${r.offfeed_lines ? `, ${r.offfeed_lines} recurring` : ""}${r.rental_lo_cents ? `, Liberty-owned ${money(r.rental_lo_cents)}` : ""}</td></tr>
       <tr><td>Purchases</td><td class="num">${money(r.purchase_cents)}</td><td class="muted small">${r.pending_lines ? html`<span class="warn">${n1(r.pending_lines, "PO")} awaiting a decision</span>` : ""}</td></tr>
@@ -210,6 +217,11 @@
     return html`<table><tr><th>Class</th><th>Pay ID</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Cost</th></tr>
       ${rows.map((r) => html`<tr><td>${classLabel(r.certified_class)}</td><td>${r.pay_id}${r.pay_type_name && r.pay_type_name !== r.pay_id ? html` <span class="muted small">${r.pay_type_name}</span>` : ""}</td><td class="num">${hours(r.hours)}</td><td class="num">${money(r.rate_cents)}</td><td class="num">${money(r.cost_cents)}</td></tr>`)}
       <tr class="total"><td colspan="2">${label}</td><td class="num">${hours(rows.reduce((a, r) => a + r.hours, 0))}</td><td></td><td class="num">${money(rows.reduce((a, r) => a + r.cost_cents, 0))}</td></tr></table>`;
+  }
+  function heldClassTable(rows) {
+    return html`<h3>Held, not in the cost</h3><table><tr><th>Class</th><th>Pay ID</th><th>Why</th><th class="num">Hours</th></tr>
+      ${rows.map((r) => html`<tr class="held"><td>${classLabel(r.certified_class)}</td><td>${r.pay_id}</td><td>${String(r.status || "").replace(/^held:/, "")}</td><td class="num">${hours(r.hours)}</td></tr>`)}
+      <tr class="total"><td colspan="3">Held</td><td class="num">${hours(rows.reduce((a, r) => a + (+r.hours || 0), 0))}</td></tr></table>`;
   }
   const heldWhat = (h) => h.status === "held:no rate" ? `${classLabel(h.certified_class)} · ${h.pay_id}${h.rate_table_code ? ` · table ${h.rate_table_code}` : ""}`
     : h.status === "held:unknown job" ? `${h.job_number} ${h.job_name || ""}` : h.status === "held:no rate table" ? `${jobName(h.job_number)} has no rate table`
@@ -292,7 +304,8 @@
     const classRows = pricedClasses(d);
     const heldNow = d.held.filter((h) => h.first_day <= C.monthEnd(m) && h.last_day >= m + "-01");
     const table = d.job.rate_table_code ? st.settings.tables.find((x) => x.code === d.job.rate_table_code) : null;
-    return html`<div class="row" style="justify-content:space-between"><h1>${d.job.short_name} <span class="muted">${d.job.name || ""} · ${d.job.job_number}</span></h1>${monthNav(m, "#/job/" + n)}
+    const head = jobHead(d.job);
+    return html`<div class="row" style="justify-content:space-between"><h1>${head.short} <span class="muted">${head.name ? `${head.name} · ` : ""}${d.job.job_number}</span></h1>${monthNav(m, "#/job/" + n)}
         <span class="row noprint"><a href="#/report/${n}?m=${m}"><button>Report (PDF)</button></a>${st.db.canEdit() ? html`<button id="xlsx">Export .xlsx</button>` : ""}</span></div>
       <p class="muted small">${d.job.campus ? `${d.job.campus}${d.job.region ? ` · ${d.job.region}` : ""} · ` : ""}${d.job.rate_table_code ? `rate table ${d.job.rate_table_code}${table && table.description ? ` (${table.description})` : ""}` : html`<span class="warn">no rate table: its labor is held until one is set in Settings</span>`} · rentals taxed ${pct(d.job.tax_bp == null ? 700 : d.job.tax_bp)}, markup ${pct(d.job.markup_bp == null ? 1000 : d.job.markup_bp)} on ${d.job.markup_base === "rent" ? "rent" : "rent + tax"}</p>
       ${t ? html`<div class="tiles">${tile("labor", "Labor", t.labor_cents, `${hours(t.labor_hours)} hours${t.labor_held_hours ? `, ${hours(t.labor_held_hours)} held` : ""}${t.labor_through ? ` · HH2 through ${C.fmtDay(t.labor_through)}` : ""}`)}
@@ -447,11 +460,17 @@
   function reportSection(d) {
     const t = d.tile || { labor_cents: 0, labor_hours: 0, labor_held_hours: 0, rental_cents: 0, rental_lo_cents: 0, rental_lines: 0, offfeed_cents: 0, offfeed_lines: 0, purchase_cents: 0, pending_lines: 0, total_cents: 0 };
     const classRows = pricedClasses(d);
+    const heldRows = d.classes.filter((r) => String(r.status || "").startsWith("held:")).sort(classSort);
     const stmts = statementsFor(d);
     const counted = d.purchases.filter((p) => (p.status === "auto" || p.status === "confirmed") && p.order_type !== "Rental");
-    return html`<section style="break-inside:avoid-page;margin-bottom:28px"><h2 style="font-size:16px;color:inherit;text-transform:none;letter-spacing:0">${d.job.short_name} <span class="muted">${d.job.name || ""} · ${d.job.job_number}${d.job.campus ? ` · ${d.job.campus}` : ""}</span></h2>
+    const pending = d.purchases.filter((p) => p.status === "needs_decision");
+    const head = jobHead(d.job);
+    const unpriced = !t.labor_cents && t.labor_held_hours;
+    return html`<section style="break-inside:avoid-page;margin-bottom:28px"><h2 style="font-size:16px;color:inherit;text-transform:none;letter-spacing:0">${head.short} <span class="muted">${head.name ? `${head.name} · ` : ""}${d.job.job_number}${d.job.campus ? ` · ${d.job.campus}` : ""}</span></h2>
+      ${unpriced ? html`<p class="warn small">${!d.job.rate_table_code ? "No rate table is assigned, so this labor has no cost. Assign one in Settings and these hours price without another upload." : "These hours have no matching rate, so the labor cost is $0 until Settings has the class and pay ID."}</p>` : ""}
       <div class="tiles">${tile("labor", "Labor", t.labor_cents, `${hours(t.labor_hours)} hours${t.labor_held_hours ? `, ${hours(t.labor_held_hours)} held` : ""}`)}${tile("equipment", "Rentals to client", t.rental_cents + (t.offfeed_cents || 0), `${t.rental_lines} on rent${t.offfeed_lines ? `, ${t.offfeed_lines} recurring` : ""}`)}${t.rental_lo_cents ? tile("lo", "Liberty-owned", t.rental_lo_cents, "rent only") : ""}${tile("materials", "Purchases (material POs)", t.purchase_cents, t.pending_lines ? `${n1(t.pending_lines, "PO")} awaiting a decision` : "")}${tile("total", "Total", t.total_cents)}</div>
       ${classRows.length ? classTable(classRows, "Labor") : ""}
+      ${heldRows.length ? heldClassTable(heldRows) : ""}
       ${stmts.map((s) => statementTable(s, d))}
       ${d.recur.length ? html`<h3>Recurring rentals · confirmed from the Job Cost To Date</h3><table><tr><th>Vendor</th><th>Line</th><th class="num">A month</th><th class="num">Markup</th><th class="num">Total</th></tr>
         ${d.recur.map((r) => html`<tr><td>${r.vendor_name}${r.liberty_owned ? html` <span class="pill">Liberty-owned</span>` : ""}</td><td>${r.description}${r.units > 1 ? ` × ${r.units}` : ""}</td><td class="num">${money(r.rent_cents)}</td><td class="num">${money(r.markup_cents)}</td><td class="num">${money(r.total_cents)}</td></tr>`)}
@@ -460,7 +479,9 @@
         <tr><td>${d.siteCounts.restrooms.units} units: ${restroomLine(d.siteCounts.restrooms)}${restroomExtras(d.siteCounts.restrooms) ? `; ${restroomExtras(d.siteCounts.restrooms)}` : ""}</td><td>${SS.trailerLabel(d.siteCounts.trailers)}</td><td>${d.siteCounts.storage.container_units ? n1(d.siteCounts.storage.container_units, "container") : "none"}</td><td>${d.dump.map((x) => `${x.vendor_name}: ${x.pulls == null ? "spend only" : n1(x.pulls, "pull")} (${x.source})`).join("; ") || "none"}</td></tr></table>` : ""}
       ${counted.length ? html`<h3>Purchase orders · ${n1(counted.length, "PO")}</h3><table><tr><th>PO #</th><th>Date</th><th>Supplier</th><th>Description</th><th>Type</th><th class="num">Committed</th></tr>
         ${counted.slice().sort((a, b) => (a.doc_date + a.doc_number < b.doc_date + b.doc_number ? -1 : 1)).map((r) => html`<tr><td class="mono">${r.doc_number}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="small">${r.order_type || ""}</td><td class="num">${money(r.total_cents)}</td></tr>`)}
-        <tr class="total"><td colspan="5">Purchases</td><td class="num">${money(counted.reduce((a, r) => a + (r.total_cents || 0), 0))}</td></tr></table>` : ""}</section>`;
+        <tr class="total"><td colspan="5">Purchases</td><td class="num">${money(counted.reduce((a, r) => a + (r.total_cents || 0), 0))}</td></tr></table>` : ""}
+      ${pending.length ? html`<h3>Purchase orders awaiting a decision · ${n1(pending.length, "PO")}</h3><p class="muted small">Left out of the total until each one is counted or left out in Settings.</p><table><tr><th>PO #</th><th>Date</th><th>Supplier</th><th>Description</th><th class="num">Committed</th></tr>
+        ${pending.slice().sort(poSort).map((r) => html`<tr class="held"><td class="mono">${r.doc_number}</td><td class="small">${r.doc_date ? C.fmtDay(r.doc_date) : ""}</td><td>${r.vendor_name_raw || r.vendor_key || ""}</td><td>${r.description || ""}</td><td class="num">${r.total_cents == null ? html`<span class="warn">no amount</span>` : money(r.total_cents)}</td></tr>`)}</table>` : ""}</section>`;
   }
   function statementTable(s, d) {
     return html`<h3>${vendorName(s.vendor_key)} · on rent as of ${C.fmtDay(s.as_of)}</h3>
@@ -474,7 +495,8 @@
     const d = await jobData(n, m);
     const s = statementsFor(d).find((x) => x.vendor_key === vendor_key);
     if (!s) return html`${printBar()}<p class="muted">No ${vendorName(vendor_key)} report covers ${C.fmtMonth(m)} for ${d.job.short_name}${st.db.canEdit() ? "" : ", or the statement's lines are for editors"}.</p>`;
-    return html`${printBar()}<h1>${d.job.short_name} · Equipment on rent · ${C.fmtMonth(m)}</h1><p class="muted small">${d.job.name || ""} · ${d.job.job_number} · prepared ${C.fmtDay(C.todayIso())}</p>${statementTable(s, d)}`;
+    const head = jobHead(d.job);
+    return html`${printBar()}<h1>${head.short} · Equipment on rent · ${C.fmtMonth(m)}</h1><p class="muted small">${head.name ? `${head.name} · ` : ""}${d.job.job_number} · prepared ${C.fmtDay(C.todayIso())}</p>${statementTable(s, d)}`;
   }
 
   // ---- Update ---------------------------------------------------------------------------------------------

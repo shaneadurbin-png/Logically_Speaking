@@ -104,6 +104,7 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   const campuses = await page.$$eval("main h2", (els) => els.map((e) => e.textContent.trim()));
   console.log("    campuses: " + campuses.join(" / "));
   check(campuses.length >= 1, "jobs are grouped by campus");
+  check(!/110\s+110/.test(await text("main")), "a register job is not named twice on the portfolio");
   await shot("04-portfolio");
 
   await nav("#/review");
@@ -214,6 +215,9 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   await nav("#/report/all?m=2026-09");
   const rep = await text("main");
   check(rep.includes("All jobs") && rep.includes("Labor"), "Report for all jobs renders");
+  check(rep.includes("CDR1 East DC4"), "a distinct project name still prints beside the short name");
+  check(!/110\s+110/.test(rep) && !/Project Gravity\s+Project Gravity/.test(rep), "the report does not print a job name twice");
+  check(rep.includes("Held, not in the cost"), "held hours are listed on the report instead of only a $0 labor tile");
   await page.emulateMedia({ media: "print" });
   await page.pdf({ path: path.join(OUT, "report-all-2026-09.pdf"), format: "Letter", printBackground: true });
   await page.emulateMedia({ media: "screen" });
