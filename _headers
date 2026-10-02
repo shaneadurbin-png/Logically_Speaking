@@ -1,0 +1,13 @@
+# Cloudflare Pages headers. The page loads code only from itself and talks
+# only to its Supabase project. Fill in the project ref once it exists.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: same-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
+
+/CostTracker.html
+  Cache-Control: no-cache
+
+/
+  Cache-Control: no-cache

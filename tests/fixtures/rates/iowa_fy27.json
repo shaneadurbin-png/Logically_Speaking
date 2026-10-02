@@ -1,0 +1,24 @@
+{
+  "note": "Rates shaped like a Sage rate table, in cents, effective 7/1/2026 to 6/30/2027: one table per CDR job, keyed by certified class and pay ID. The #226021 (DC7) table deliberately lacks #LAB-J double time so a fixture row is held.",
+  "effective_from": "2026-07-01",
+  "effective_to": "2027-07-01",
+  "tables": { "50-60-225121": "#225121", "50-60-225120": "#225120", "50-60-226021": "#226021", "50-60-225104": "#225104" },
+  "table": [
+    { "certified_class": "#LAB-J",  "pay_id": "UNION REG",  "rate_cents": 8725 },
+    { "certified_class": "#LAB-J",  "pay_id": "REG",        "rate_cents": 8725 },
+    { "certified_class": "#LAB-J",  "pay_id": "UNION O/T",  "rate_cents": 12000 },
+    { "certified_class": "#LAB-J",  "pay_id": "O/T",        "rate_cents": 12000 },
+    { "certified_class": "#LAB-J",  "pay_id": "UNION D/T",  "rate_cents": 14950, "except_tables": ["#226021"] },
+    { "certified_class": "#LAB-J",  "pay_id": "DOUBLETIME", "rate_cents": 14950, "except_tables": ["#226021"] },
+    { "certified_class": "#LAB-GF", "pay_id": "UNION REG",  "rate_cents": 10825 },
+    { "certified_class": "#LAB-GF", "pay_id": "REG",        "rate_cents": 10825 },
+    { "certified_class": "#LAB-GF", "pay_id": "UNION O/T",  "rate_cents": 14625 },
+    { "certified_class": "#LAB-GF", "pay_id": "O/T",        "rate_cents": 14625 },
+    { "certified_class": "#CARP-J", "pay_id": "UNION REG",  "rate_cents": 9850 },
+    { "certified_class": "#CARP-J", "pay_id": "REG",        "rate_cents": 9850 },
+    { "certified_class": "#CARP-J", "pay_id": "UNION O/T",  "rate_cents": 12750 },
+    { "certified_class": "#CARP-J", "pay_id": "O/T",        "rate_cents": 12750 },
+    { "certified_class": "#CARP-J", "pay_id": "UNION D/T",  "rate_cents": 15650 },
+    { "certified_class": "#CARP-J", "pay_id": "DOUBLETIME", "rate_cents": 15650 }
+  ]
+}

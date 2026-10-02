@@ -1,0 +1,16 @@
+[
+  {
+    "id": 1,
+    "pattern": "sourgum",
+    "bills_per_haul": true,
+    "haul_rate_cents": 68500,
+    "container_yd": 30
+  },
+  {
+    "id": 2,
+    "pattern": "waste management",
+    "bills_per_haul": false,
+    "haul_rate_cents": null,
+    "container_yd": 40
+  }
+]

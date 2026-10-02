@@ -1,0 +1,33 @@
+{
+  "file": "Tbl_PO1_2026-09-25.xlsx",
+  "as_of": "2026-09-25",
+  "pos": 12,
+  "counted": 8,
+  "committed_cents": 2260324,
+  "cancelled": 1,
+  "quotes": 2,
+  "noAmount": 1,
+  "noJob": 2,
+  "noJobCounted": 1,
+  "sharedNumbers": [
+    {
+      "po_number": "26.01",
+      "orders": 2
+    }
+  ],
+  "sharedNumberPos": 2,
+  "latestOrder": "2026-09-24",
+  "byType": {
+    "Material": 1653246,
+    "Rental": 607078
+  },
+  "jobs": [
+    "50-60-225104",
+    "50-60-225120",
+    "50-60-225121",
+    "50-63-125001"
+  ],
+  "dc4Sep": 31250,
+  "nbDc4": 31250,
+  "dc5Sep": 1406996
+}

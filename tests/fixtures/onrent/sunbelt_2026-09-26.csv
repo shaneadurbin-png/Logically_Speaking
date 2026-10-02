@@ -1,0 +1,6 @@
+Vendor,Equipment #,Contract #,Job,Description,Qty,On Rent Date,Rate Period,Rate,Monthly Rent
+Sunbelt,1001,C-500,CDR DC4,Telehandler 10K,1,2026-08-03,Monthly,"4,500.00","4,500.00"
+Sunbelt,1002,C-500,CDR DC4,Scissor Lift 26',2,2026-08-10,4 Week,900.00,
+Sunbelt,1003,C-501,CDR DC5,Generator 100kW,1,2026-07-15,Monthly,"$3,200.00","$3,200.00"
+Sunbelt,1004,C-501,CDR DC5,Light Tower,3,2026-07-15,Monthly,650.00,
+Sunbelt,1006,C-500,CDR DC4,Welder,1,2026-09-22,Monthly,400.00,400.00

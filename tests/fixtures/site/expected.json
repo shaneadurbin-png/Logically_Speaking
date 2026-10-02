@@ -1,0 +1,158 @@
+{
+  "onrent": "Equipment_On_Rent_-_All_Jobs_2026-09-27-08.00.00.xlsx",
+  "jctd": "CDR_DC5_9-29-26.xlsx",
+  "job": "50-60-225120",
+  "jobRef": "CDR-SCCI-DC5",
+  "siteLines": 44,
+  "jctdRows": 22,
+  "counts": {
+    "restrooms": {
+      "units": 17,
+      "byKind": {
+        "standard": 12,
+        "high_rise": 3,
+        "handicap": 1,
+        "enhanced": 1
+      },
+      "trailers": 1,
+      "static": 1,
+      "containers": 0,
+      "stations": 15,
+      "sinks": 4,
+      "holding_tanks": 2,
+      "waste_water_systems": 1,
+      "service_per_week": 5
+    },
+    "trailers": {
+      "complexes": [
+        {
+          "label": "6-plex",
+          "n": 1,
+          "sections": 6
+        },
+        {
+          "label": "4-plex",
+          "n": 1,
+          "sections": 4
+        }
+      ],
+      "modular": {
+        "24X60 w/2 RR": 2
+      },
+      "offices": {
+        "12X60 w/1 RR": 3
+      },
+      "office_containers": 2,
+      "unspecified": 0,
+      "buildings": 9,
+      "notes": [
+        "contract 270000003: 1 front, 0 rears: the sections do not close"
+      ]
+    },
+    "storage": {
+      "containers": {
+        "8X40": 4,
+        "8X20": 3
+      },
+      "container_units": 7,
+      "trailers": 0
+    },
+    "dumpsters": {
+      "units": 0,
+      "byYards": {}
+    },
+    "accessories": {
+      "steps": 5,
+      "tray": 3
+    },
+    "classified": 40
+  },
+  "trailerLabel": "1 × 6-plex, 1 × 4-plex, 2 × 24X60 w/2 RR, 3 × 12X60 w/1 RR office, 2 office containers",
+  "ledger": [
+    {
+      "month": "2026-08",
+      "vendor": "sourgum",
+      "pulls": 8,
+      "source": "ledger",
+      "ledger_lines": 10,
+      "ledger_cents": 548000
+    },
+    {
+      "month": "2026-08",
+      "vendor": "waste management",
+      "pulls": null,
+      "source": "spend",
+      "ledger_lines": 3,
+      "ledger_cents": 13623351
+    },
+    {
+      "month": "2026-09",
+      "vendor": "sourgum",
+      "pulls": 5,
+      "source": "ledger",
+      "ledger_lines": 5,
+      "ledger_cents": 340500
+    },
+    {
+      "month": "2026-09",
+      "vendor": "waste management",
+      "pulls": null,
+      "source": "spend",
+      "ledger_lines": 1,
+      "ledger_cents": 6100000
+    }
+  ],
+  "log": [
+    {
+      "job_number": "50-60-225120",
+      "pull_date": "2026-08-12",
+      "vendor_name": "Waste Management",
+      "container_yd": 40,
+      "pulls": 3,
+      "ticket_no": "WM-1"
+    },
+    {
+      "job_number": "50-60-225120",
+      "pull_date": "2026-08-20",
+      "vendor_name": "Sourgum",
+      "container_yd": 30,
+      "pulls": 7,
+      "ticket_no": "S-20",
+      "cost_cents": 479500
+    }
+  ],
+  "withLog": [
+    {
+      "month": "2026-08",
+      "vendor": "sourgum",
+      "pulls": 7,
+      "source": "log",
+      "entries": 1,
+      "haul_lines": 8
+    },
+    {
+      "month": "2026-08",
+      "vendor": "waste management",
+      "pulls": 3,
+      "source": "log",
+      "entries": 1,
+      "haul_lines": 3
+    },
+    {
+      "month": "2026-09",
+      "vendor": "sourgum",
+      "pulls": 5,
+      "source": "ledger",
+      "entries": 0,
+      "haul_lines": 5
+    },
+    {
+      "month": "2026-09",
+      "vendor": "waste management",
+      "pulls": null,
+      "source": "spend",
+      "entries": 0,
+      "haul_lines": 1
+    }
+  ]
+}

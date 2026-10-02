@@ -1,0 +1,476 @@
+{
+  "file": "LaborDetails_9_1_2026_to_9_30_2026.xlsx",
+  "childFile": "LaborDetails_9_1_2026_to_9_30_2026_childjobs.xlsx",
+  "range": {
+    "start": "2026-09-01",
+    "end": "2026-09-30"
+  },
+  "rows": 60,
+  "hoursX100": 41000,
+  "duplicates": 3,
+  "employees": 10,
+  "costCents": 3510250,
+  "byJob": {
+    "50-60-225121": {
+      "rows": 33,
+      "hoursX100": 22800,
+      "costCents": 1900350
+    },
+    "50-60-226021": {
+      "rows": 7,
+      "hoursX100": 3000,
+      "costCents": 303200
+    },
+    "50-60-225120": {
+      "rows": 10,
+      "hoursX100": 7800,
+      "costCents": 724300
+    },
+    "50-60-225104": {
+      "rows": 9,
+      "hoursX100": 6600,
+      "costCents": 582400
+    },
+    "50-61-000001": {
+      "rows": 1,
+      "hoursX100": 800,
+      "costCents": 0
+    }
+  },
+  "byStatus": {
+    "priced": 51,
+    "held:no rate": 2,
+    "held:no class": 3,
+    "held:unknown job": 1,
+    "held:PTO pay type": 3
+  },
+  "heldByReason": {
+    "no rate": 2,
+    "no class": 3,
+    "unknown job": 1,
+    "PTO pay type": 3
+  },
+  "held": 9,
+  "rowStatus": [
+    {
+      "row_index": 2,
+      "employee_number": "FB5001",
+      "work_date": "2026-09-01",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 3,
+      "employee_number": "FB5001",
+      "work_date": "2026-09-02",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 4,
+      "employee_number": "FB5001",
+      "work_date": "2026-09-03",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 5,
+      "employee_number": "FB5001",
+      "work_date": "2026-09-04",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 6,
+      "employee_number": "FB5001",
+      "work_date": "2026-09-01",
+      "status": "priced",
+      "cost_cents": 24000
+    },
+    {
+      "row_index": 7,
+      "employee_number": "FB5001",
+      "work_date": "2026-09-02",
+      "status": "priced",
+      "cost_cents": 24000
+    },
+    {
+      "row_index": 8,
+      "employee_number": "FB5002",
+      "work_date": "2026-09-01",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 9,
+      "employee_number": "FB5002",
+      "work_date": "2026-09-02",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 10,
+      "employee_number": "FB5002",
+      "work_date": "2026-09-03",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 11,
+      "employee_number": "FB5002",
+      "work_date": "2026-09-04",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 12,
+      "employee_number": "FB5002",
+      "work_date": "2026-09-03",
+      "status": "priced",
+      "cost_cents": 24000
+    },
+    {
+      "row_index": 13,
+      "employee_number": "FB5002",
+      "work_date": "2026-09-05",
+      "status": "held:no rate",
+      "cost_cents": null
+    },
+    {
+      "row_index": 14,
+      "employee_number": "FB8001",
+      "work_date": "2026-09-08",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 15,
+      "employee_number": "FB8001",
+      "work_date": "2026-09-09",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 16,
+      "employee_number": "FB8001",
+      "work_date": "2026-09-10",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 17,
+      "employee_number": "FB8001",
+      "work_date": "2026-09-11",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 18,
+      "employee_number": "FB8001",
+      "work_date": "2026-09-12",
+      "status": "priced",
+      "cost_cents": 93900
+    },
+    {
+      "row_index": 19,
+      "employee_number": "FB8002",
+      "work_date": "2026-09-08",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 20,
+      "employee_number": "FB8002",
+      "work_date": "2026-09-09",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 21,
+      "employee_number": "FB8002",
+      "work_date": "2026-09-10",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 22,
+      "employee_number": "FB8002",
+      "work_date": "2026-09-11",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 23,
+      "employee_number": "FB8002",
+      "work_date": "2026-09-08",
+      "status": "priced",
+      "cost_cents": 25500
+    },
+    {
+      "row_index": 24,
+      "employee_number": "FB8002",
+      "work_date": "2026-09-08",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 25,
+      "employee_number": "FB2001",
+      "work_date": "2026-09-14",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 26,
+      "employee_number": "FB2001",
+      "work_date": "2026-09-15",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 27,
+      "employee_number": "FB2001",
+      "work_date": "2026-09-16",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 28,
+      "employee_number": "FB2001",
+      "work_date": "2026-09-17",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 29,
+      "employee_number": "FB2001",
+      "work_date": "2026-09-18",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 30,
+      "employee_number": "FB2001",
+      "work_date": "2026-09-15",
+      "status": "priced",
+      "cost_cents": 24000
+    },
+    {
+      "row_index": 31,
+      "employee_number": "FB7001",
+      "work_date": "2026-09-14",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 32,
+      "employee_number": "FB7001",
+      "work_date": "2026-09-15",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 33,
+      "employee_number": "FB7001",
+      "work_date": "2026-09-16",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 34,
+      "employee_number": "FB7001",
+      "work_date": "2026-09-14",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 35,
+      "employee_number": "TTR-10001",
+      "work_date": "2026-09-21",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 36,
+      "employee_number": "TTR-10001",
+      "work_date": "2026-09-22",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 37,
+      "employee_number": "TTR-10001",
+      "work_date": "2026-09-23",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 38,
+      "employee_number": "TTR-10001",
+      "work_date": "2026-09-24",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 39,
+      "employee_number": "TTR-10001",
+      "work_date": "2026-09-21",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 40,
+      "employee_number": "FB5003",
+      "work_date": "2026-09-21",
+      "status": "priced",
+      "cost_cents": 86600
+    },
+    {
+      "row_index": 41,
+      "employee_number": "FB5003",
+      "work_date": "2026-09-22",
+      "status": "priced",
+      "cost_cents": 86600
+    },
+    {
+      "row_index": 42,
+      "employee_number": "FB5003",
+      "work_date": "2026-09-23",
+      "status": "priced",
+      "cost_cents": 86600
+    },
+    {
+      "row_index": 43,
+      "employee_number": "FB5003",
+      "work_date": "2026-09-22",
+      "status": "priced",
+      "cost_cents": 29250
+    },
+    {
+      "row_index": 44,
+      "employee_number": "FB5003",
+      "work_date": "2026-09-26",
+      "status": "held:no rate",
+      "cost_cents": null
+    },
+    {
+      "row_index": 45,
+      "employee_number": "FB1001",
+      "work_date": "2026-09-28",
+      "status": "held:no class",
+      "cost_cents": null
+    },
+    {
+      "row_index": 46,
+      "employee_number": "FB1001",
+      "work_date": "2026-09-29",
+      "status": "held:no class",
+      "cost_cents": null
+    },
+    {
+      "row_index": 47,
+      "employee_number": "FB1001",
+      "work_date": "2026-09-30",
+      "status": "held:no class",
+      "cost_cents": null
+    },
+    {
+      "row_index": 48,
+      "employee_number": "FE9001",
+      "work_date": "2026-09-28",
+      "status": "held:unknown job",
+      "cost_cents": null
+    },
+    {
+      "row_index": 49,
+      "employee_number": "FB5001",
+      "work_date": "2026-09-07",
+      "status": "held:PTO pay type",
+      "cost_cents": null
+    },
+    {
+      "row_index": 50,
+      "employee_number": "FB5002",
+      "work_date": "2026-09-21",
+      "status": "held:PTO pay type",
+      "cost_cents": null
+    },
+    {
+      "row_index": 51,
+      "employee_number": "FB8001",
+      "work_date": "2026-09-14",
+      "status": "held:PTO pay type",
+      "cost_cents": null
+    },
+    {
+      "row_index": 52,
+      "employee_number": "FB5001",
+      "work_date": "2026-09-08",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 53,
+      "employee_number": "FB5001",
+      "work_date": "2026-09-09",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 54,
+      "employee_number": "FB5001",
+      "work_date": "2026-09-10",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 55,
+      "employee_number": "FB5001",
+      "work_date": "2026-09-11",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 56,
+      "employee_number": "FB8002",
+      "work_date": "2026-09-14",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 57,
+      "employee_number": "FB8002",
+      "work_date": "2026-09-15",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 58,
+      "employee_number": "FB8002",
+      "work_date": "2026-09-16",
+      "status": "priced",
+      "cost_cents": 78800
+    },
+    {
+      "row_index": 59,
+      "employee_number": "FB2001",
+      "work_date": "2026-09-21",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 60,
+      "employee_number": "FB2001",
+      "work_date": "2026-09-22",
+      "status": "priced",
+      "cost_cents": 69800
+    },
+    {
+      "row_index": 61,
+      "employee_number": "FB2001",
+      "work_date": "2026-09-23",
+      "status": "priced",
+      "cost_cents": 69800
+    }
+  ]
+}

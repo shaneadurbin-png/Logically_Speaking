@@ -1,0 +1,14 @@
+{
+  "name": "gr-cost",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Liberty Builds project cost tracker: labor, rentals and purchases per job, live.",
+  "scripts": {
+    "test": "node tests/run_all.js",
+    "test:db": "bash tests/db/run.sh",
+    "smoke": "node tests/smoke_browser.js",
+    "fixtures": "node tests/fixtures/make_fixtures.js",
+    "serve": "python3 -m http.server 8794"
+  },
+  "license": "MIT"
+}
