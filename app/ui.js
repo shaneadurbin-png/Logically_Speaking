@@ -14,7 +14,7 @@
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig, PM = root.PortfolioMap;
-  const RELEASE = "0.1.7";
+  const RELEASE = "0.1.8";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -217,7 +217,7 @@
     return html`<div class="pf">
       <div class="pf-head">
         <div class="pf-intro">
-          <h1 class="pf-title">What each campus has cost.</h1>
+          <h1 class="pf-title">Mission Critical</h1>
           <p class="pf-sub">${scopeName} · ${money(tot.all, true)} this month. Figures come from HH2, the on-rent reports, and Purchase Pro.</p>
         </div>
         <div class="pf-tools noprint">
