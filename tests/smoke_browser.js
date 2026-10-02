@@ -85,7 +85,7 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   for (const c of after) console.log(`    [${c.status}] ${c.title} :: ${c.reason.slice(0, 120)}`);
   check(after.filter((c) => c.status === "recorded").length === 17, "17 files recorded");
   check(after.some((c) => c.title.startsWith("Sage rate tables") && /rates added/.test(c.reason) && /Newly assigned: 110 #224050/.test(c.reason)), "the Sage card says how many rates were added and that the register's new job got its table");
-  check((await text("header.top")).includes("HH2 through"), "the header chips refresh after Record");
+  check(!(await text("header.top")).includes("HH2 through") && !(await text("header.top")).includes(".xlsx"), "the header does not list uploaded reports after Record");
   await shot("03-update-recorded");
 
   // the same file again: already on file
@@ -99,8 +99,7 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   const tiles = await page.$$eval("main .tiles .tile", (els) => els.map((e) => `${e.querySelector(".label").textContent} = ${e.querySelector(".value").textContent}`));
   console.log("    " + tiles.join(" | "));
   check(tiles.length === 4 && !tiles.every((t) => t.endsWith("$0")), "Portfolio tiles carry money");
-  check((await text("header.top")).includes("HH2 through Sep 30, 2026") || (await text("header.top")).includes("HH2 through"), "header chip says what HH2 covers");
-  check((await text("header.top")).includes("POs as of"), "header chip says the PO export's as-of");
+  check(!(await text("header.top")).includes("HH2 through") && !(await text("header.top")).includes("POs as of") && (await text("header.top")).includes("Portfolio"), "header keeps navigation and omits the report chips");
   const campuses = await page.$$eval("main h2", (els) => els.map((e) => e.textContent.trim()));
   console.log("    campuses: " + campuses.join(" / "));
   check(campuses.length >= 1, "jobs are grouped by campus");
@@ -149,7 +148,7 @@ const check = (cond, msg) => { if (!cond) throw new Error("FAIL - " + msg); ok(m
   const ec = page.locator("form.endcharge").first(); await ec.locator("input[name=end_month]").fill("2026-08"); const re = await renders(); await ec.locator("button").click(); await page.waitForFunction((b) => window.UI.state.renders > b, re);
   await nav("#/job/50-60-225121?m=2026-09");
   check((await rentOf()) === rentBefore, "ending it in August takes it out of September");
-  check((await text("header.top")).includes("JCTD through"), "the header chip says what the JCTD covers");
+  check(!(await text("header.top")).includes("JCTD through") && !(await text("header.top")).includes("No JCTD"), "the header does not list the JCTD report");
 
   // ---- Site services on DC5: restrooms, the plexes, the dumpsters, a pull logged ---------------------
   await nav("#/job/50-60-225120?m=2026-09");

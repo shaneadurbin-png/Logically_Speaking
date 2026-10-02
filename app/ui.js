@@ -14,7 +14,7 @@
   "use strict";
   const C = root.Common, B = root.Buckets, L = root.LaborModel, R = root.RentalsModel, Rev = root.ReviewModel, V = root.OnRentVendors, SS = root.SiteServices,
     Intake = root.Intake, E = root.ExportXlsx, cfg = root.CostConfig, PM = root.PortfolioMap;
-  const RELEASE = "0.1.9";
+  const RELEASE = "0.1.10";
 
   // ---- markup, escaped by default --------------------------------------------------
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -123,21 +123,24 @@
   });
 
   // ---- header and foot ------------------------------------------------------------------------
+  /** Navigation and the session only. opts.freshness and opts.reports are the uploads already on file; the header does not list them. Update shows the current drop, and Settings keeps the file history. */
+  function headerMarkup(opts) {
+    const page = opts.page || "";
+    const chip = (cls, text) => html`<span class="chip ${cls}"><span class="dot"></span>${text}</span>`;
+    const nav = (p, label) => html`<a href="${p === "" ? (opts.home || "#/") : `#/${p}`}" class="${page === p || (p === "" && !page) ? "on" : ""}">${label}</a>`;
+    const session = opts.mode === "demo" ? chip("demo", "Demo: nothing is saved") : html`<span class="chip">${opts.user && opts.user.email ? opts.user.email : ""} · ${opts.role || ""}</span>`;
+    return html`<header class="top"><span class="brand">GR Cost</span>
+      <nav>${nav("", "Portfolio")}${nav("review", "Review")}${opts.canEdit ? nav("update", "Update") : ""}${nav("settings", "Settings")}</nav>
+      <span class="spacer"></span>
+      ${session}
+    </header>`;
+  }
   async function topView() {
     const f = (await st.db.view("v_freshness"))[0] || {};
-    const on = f.onrent_as_of || {};
-    const chip = (cls, text, title) => html`<span class="chip ${cls}" title="${title || ""}"><span class="dot"></span>${text}</span>`;
-    const age = (iso) => { if (!iso) return "none"; const d = Math.round((Date.now() - new Date(iso + "T00:00:00").getTime()) / 86400000); return d <= 10 ? "fresh" : "stale"; };
-    const nav = (p, label) => html`<a href="${p === "" ? portfolioHome() : `#/${p}`}" class="${st.route.page === p || (p === "" && !st.route.page) ? "on" : ""}">${label}</a>`;
-    return html`<header class="top"><span class="brand">GR Cost</span>
-      <nav>${nav("", "Portfolio")}${nav("review", "Review")}${st.db.canEdit() ? nav("update", "Update") : ""}${nav("settings", "Settings")}</nav>
-      <span class="spacer"></span>
-      ${chip(age(f.hh2_through), f.hh2_through ? `HH2 through ${C.fmtDay(f.hh2_through)}` : "No HH2 yet", "labor")}
-      ${Object.keys(on).length ? Object.entries(on).map(([k, d]) => chip(age(d), `${vendorName(k)} ${C.fmtDay(d)}`, "on-rent report")) : chip("none", "No on-rent report yet")}
-      ${chip(age(f.po_as_of), f.po_as_of ? `POs as of ${C.fmtDay(f.po_as_of)}` : "No PO export yet", "Purchase Pro export")}
-      ${chip(age(f.jctd_through), f.jctd_through ? `JCTD through ${C.fmtDay(f.jctd_through)}${f.jctd_jobs ? ` · ${f.jctd_jobs} job${f.jctd_jobs === 1 ? "" : "s"}` : ""}` : "No JCTD yet", "Job Cost To Date")}
-      ${st.db.mode === "demo" ? chip("demo", "Demo: nothing is saved") : html`<span class="chip">${st.user ? st.user.email : ""} · ${st.db.role}</span>`}
-    </header>`;
+    return headerMarkup({
+      page: st.route.page, canEdit: st.db.canEdit(), mode: st.db.mode, user: st.user, role: st.db.role, home: portfolioHome(),
+      freshness: f, reports: f.uploads || [],
+    });
   }
   const titleBlock = () => html`<footer class="titleblock"><span>GR Cost v${RELEASE}</span><span>${st.db.mode === "demo" ? "demo mode" : "live"}</span><span>${st.settings ? n1(st.settings.jobs.length, "job") : ""}</span><span>money in cents, rounded half up</span></footer>`;
 
@@ -924,6 +927,6 @@
     render();
   }
   if (cfg.RELEASE !== RELEASE) console.warn(`config.js says ${cfg.RELEASE}, ui.js is ${RELEASE}: press Ctrl+F5`);
-  root.UI = { html, raw, mount, state: st, render, addFiles, recordAll, boot };
+  root.UI = { html, raw, mount, state: st, render, addFiles, recordAll, boot, headerMarkup };
   if (typeof document !== "undefined") { if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot(); }
 })(typeof self !== "undefined" ? self : this);
